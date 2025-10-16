@@ -1,0 +1,20 @@
+/node_modules
+.env
+.env.*
+*.env
+
+# Compilation output
+/dist
+
+# Hardhat
+/artifacts
+/cache
+
+# Typechain
+/types
+typechain
+typechain-types
+
+# IDE files
+.idea
+.vscode
