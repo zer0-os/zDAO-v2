@@ -24,8 +24,6 @@ contract ZDAO is
     GovernorVotesQuorumFraction,
     GovernorPreventLateQuorum {
 
-    uint256 public daoId;
-
     constructor(
         uint256 _daoId,
         string memory governorName,

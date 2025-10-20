@@ -1,10 +1,16 @@
 import type { HardhatUserConfig } from "hardhat/config";
-
-import hardhatToolboxMochaEthersPlugin from "@nomicfoundation/hardhat-toolbox-mocha-ethers";
 import { configVariable } from "hardhat/config";
+import hardhatViem from "@nomicfoundation/hardhat-viem";
+import hardhatToolboxViem from "@nomicfoundation/hardhat-toolbox-viem";
+import hardhatMocha from "@nomicfoundation/hardhat-mocha";
+
 
 const config: HardhatUserConfig = {
-  plugins: [hardhatToolboxMochaEthersPlugin],
+  plugins: [
+    hardhatToolboxViem,
+    hardhatViem,
+    hardhatMocha
+  ],
   solidity: {
     compilers: [
       {
