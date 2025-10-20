@@ -5,7 +5,7 @@ import { ERC20Votes } from "@openzeppelin/contracts/token/ERC20/extensions/ERC20
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { EIP712 } from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
-import { IZeroVotingERC20 } from "./ZeroVotingERC20.sol";
+import { IZeroVotingERC20 } from "./IZeroVotingERC20.sol";
 
 
 /**
@@ -19,7 +19,7 @@ import { IZeroVotingERC20 } from "./ZeroVotingERC20.sol";
  *  which should be assigned to the StakingERC20 contract only.
  *  After that it is also advisable to renounce the admin role to leave control of the token to the staking contract.
  */
-contract ZeroVotingERC20 is ERC20Votes, AccessControl, ZeroVotingERC20 {
+contract ZeroVotingERC20 is ERC20Votes, AccessControl, IZeroVotingERC20 {
 
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
     bytes32 public constant BURNER_ROLE = keccak256("BURNER_ROLE");
