@@ -12,6 +12,7 @@ const config: HardhatUserConfig = {
     hardhatMocha
   ],
   solidity: {
+    npmFilesToBuild: ["@openzeppelin/contracts/governance/TimelockController.sol"],
     compilers: [
       {
         version: "0.8.30",
