@@ -6,9 +6,11 @@ import { GovernorSettings } from "@openzeppelin/contracts/governance/extensions/
 import { GovernorCountingSimple } from "@openzeppelin/contracts/governance/extensions/GovernorCountingSimple.sol";
 import { GovernorVotes, IVotes } from "@openzeppelin/contracts/governance/extensions/GovernorVotes.sol";
 import {
-    GovernorTimelockControl,
-    TimelockController
+    GovernorTimelockControl
 } from "@openzeppelin/contracts/governance/extensions/GovernorTimelockControl.sol";
+import {
+    TimelockController
+} from "@openzeppelin/contracts/governance/TimelockController.sol";
 import {
     GovernorVotesQuorumFraction
 } from "@openzeppelin/contracts/governance/extensions/GovernorVotesQuorumFraction.sol";
