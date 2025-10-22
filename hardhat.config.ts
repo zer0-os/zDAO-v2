@@ -1,15 +1,16 @@
 import type { HardhatUserConfig } from "hardhat/config";
+// eslint-disable-next-line no-duplicate-imports
 import { configVariable } from "hardhat/config";
 import hardhatViem from "@nomicfoundation/hardhat-viem";
 import hardhatToolboxViem from "@nomicfoundation/hardhat-toolbox-viem";
 import hardhatMocha from "@nomicfoundation/hardhat-mocha";
 
 
-const config: HardhatUserConfig = {
+const config : HardhatUserConfig = {
   plugins: [
     hardhatToolboxViem,
     hardhatViem,
-    hardhatMocha
+    hardhatMocha,
   ],
   solidity: {
     npmFilesToBuild: ["@openzeppelin/contracts/governance/TimelockController.sol"],
