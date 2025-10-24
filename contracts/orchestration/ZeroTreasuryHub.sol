@@ -159,8 +159,8 @@ contract ZeroTreasuryHub {
     function removeModule() external {}
 
     // <--- Utilities --->
-    function _getSaltNonce(bytes32 domain, string memory purpose) internal view returns (uint256) {
-        string memory actualPurpose = purpose == "" ? "main" : purpose;
+    function _getSaltNonce(bytes32 domain, string memory purpose) internal pure returns (uint256) {
+        string memory actualPurpose = bytes(purpose).length == 0 ? "main" : purpose;
 
         return uint256(keccak256(abi.encodePacked(domain, ":", actualPurpose)));
     }

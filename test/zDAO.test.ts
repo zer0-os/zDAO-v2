@@ -1,136 +1,100 @@
 import hre from "hardhat";
 import { expect } from "chai";
-import { ethers } from "ethers";
-import { ZeroVotingERC20 } from "../types/ethers-contracts/voting/ZVoting20.sol/ZeroVotingERC20.js";
-import { ZDAO } from "../types/ethers-contracts/ZDAO.js";
 
+// import { ZeroVotingERC20 } from "../types/ethers-contracts/voting/ZVoting20.sol/ZeroVotingERC20.js";
+// import { ZDAO } from "../types/ethers-contracts/ZDAO.js";
+import { WalletClient } from "viem";
 
-let admin;
-let user1;
-let user2;
+import type { HardhatViemHelpers } from "@nomicfoundation/hardhat-viem/types";
 
-let votingERC20 : ZeroVotingERC20;
-let governance20 : ZDAO;
+import { NetworkConnection } from "hardhat/types/network"
 
-const delay = 1;
-const votingPeriod = 10;
-const proposalThreshold20 = ethers.parseUnits("100");
-const proposalThreshold721 = 1;
-const quorumPercentage = 10n;
-const voteExtension = 5;
+import { DEFAULT_DELAY, DEFAULT_PROPOSAL_THRESHOLD_20, DEFAULT_QUORUM_PERCENTAGE, DEFAULT_VOTE_EXTENSION, DEFAULT_VOTING_PERIOD } from "./helpers/constants.js"
+// import { NetworkConnection } from "hardhat/types/network";
+// import { NetworkHelpers } from "@nomicfoundation/hardhat-network-helpers/types";
+// import { connect } from "http2";
 
-describe("ZDAO", () => {
-  const fixture = async () => {
-    const { viem, networkHelpers } = await hre.network.connect();
-    [ admin, user1, user2 ] = await viem.getWalletClients();
-  };
+// type Fixture<T> = (connection: NetworkConnection) => Promise<T>;
 
-  it("should deploy Voting20 with DAO using viem", async () => {
-    const {
-      viem,
-      // networkHelpers
-    } = await hre.network.connect();
+describe("ZDAO", async () => {
+  let admin : WalletClient;
+  let userA : WalletClient;
+  let userB : WalletClient;
 
-    // networkHelpers.loadFixture(fixture);
-    await fixture();
+  let addrs : Array<string>;
 
-    const voting20Params = [
-      "ZeroVotingERC20",
-      "ZV",
-      "ZERO DAO",
-      "1",
-      admin.account.address
-    ]
+  let viem : HardhatViemHelpers;
+  let networkHelpers : any; // NetworkHelpers;
 
-    const votingERC20 = await viem.deployContract(
+  let votingERC20 : any; // ZeroVotingERC20
+  let governance20 : any; //ZDAO;
+  let zeroTreasuryHub : any; // temp any
+
+  before(async () => {
+    const connection = await hre.network.connect();
+
+    viem = connection.viem;
+    networkHelpers = connection.networkHelpers;
+
+    // Deploy new environment
+    ({
+      zeroTreasuryHub,
+      votingERC20,
+      governance20
+    } = await networkHelpers.loadFixture(deploymentFixture))
+  });
+
+  // Fixture for init contract deployment
+  async function deploymentFixture(): Promise<any> {
+
+    const [ admin, userA, userB ] = await viem.getWalletClients();
+
+    const zTreasuryHub = await viem.deployContract(
+      "ZeroTreasuryHub",
+      [
+        admin.account.address,
+        `${userA.account!.address}`,
+        `${userB.account!.address}`
+      ]
+    );
+
+    const voting20 = await viem.deployContract(
       "ZeroVotingERC20",
       [
-        "ZeroVotingERC20",
+        "Zero Voting Token",
         "ZV",
         "ZERO DAO",
         "1",
-        admin.account.address
+        admin.account!.address
       ]
     );
-    expect(votingERC20).to.exist;
-    expect(votingERC20.address).to.exist;
 
-    // const timelock = await viem.deployContract(
-    //   "TimelockController",
-    //   [
-    //     1,
-    //     [],
-    //     [],
-    //     admin.account.address
-    //   ]
-    // );
-    // expect(timelock).to.exist;
+    const governance20 = await viem.deployContract(
+      "ZDAO",
+      [
+        1n,
+        "ZDAO",
+        voting20.address,
+        userA.account!.address, // todo temp, replacement for timelockController.address
+        DEFAULT_DELAY,
+        DEFAULT_VOTING_PERIOD,
+        DEFAULT_PROPOSAL_THRESHOLD_20,
+        DEFAULT_QUORUM_PERCENTAGE,
+        DEFAULT_VOTE_EXTENSION,
+      ]);
 
-  //   const governance20 = await viem.deployContract(
-  //     "ZDAO",
-  //     [
-  //       1n,
-  //       "ZDAO",
-  //       votingERC20.address,
-  //       timelock.address,
-  //       delay,
-  //       votingPeriod,
-  //       proposalThreshold20,
-  //       quorumPercentage,
-  //       voteExtension,
-  //     ]);
-  //   expect(governance20).to.exist;
+
+    return {
+      zeroTreasuryHub,
+      voting20,
+      governance20,
+      accounts: [admin, userA, userB]
+    };
+  }
+
+  it("should work", async () => {
+    console.log(zeroTreasuryHub.address);
   });
+
+  // TODO re add the prior tests
 });
-
-// const { viem } = await network.connect();
-// votingERC20 = await viem.deployContract(
-//   "ZeroVotingERC20",
-//   [
-//     "ZV",
-//     "domname",
-//     "ZERO DAO",
-//     "1",
-//     "0x1234567890123456789012345678901234567890"
-//   ]
-// );
-
-// describe("ZDAO", () => {
-//   let dao;
-
-//   it("load fixture", async () => {
-//     const { viem } = await network.connect();
-//     votingERC20 = await viem.deployContract("ZeroVotingERC20");
-
-//     expect(votingERC20).to.exist;
-//     expect(votingERC20).to.not.be.undefined;
-//   });
-
-
-//   // beforeEach(async function () {
-    
-//   //   const voting20 = await viem.deployContract("ZeroVotingERC20");
-//   //   // const voting20 = await viem.deployContract("ZeroVotingERC20");
-//   //   const token = await voting20.deploy(
-//   //     "ZeroVotingERC20",
-//   //     "ZV",
-//   //     "ZERO DAO",
-//   //     "1",
-//   //     (await ethers.getSigners())[0]
-//   //   );
-//   //   await token.waitForDeployment();
-
-//   //   const ZDAO = await ethers.getContractFactory("ZDAO");
-//   //   dao = await ZDAO.deploy(
-//   //     1n,
-//   //     "ZDAO",
-//   //     token,
-//   //     delay,
-//   //     votingPeriod,
-//   //     proposalThreshold20,
-//   //     quorumPercentage,
-//   //     voteExtension,
-//   //   );
-//   //   await dao.waitForDeployment();
-//   // });
-// });
