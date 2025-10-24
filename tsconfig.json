@@ -2,12 +2,15 @@
 {
   "compilerOptions": {
     "lib": ["es2023"],
-    "module": "node16",
+    "module": "ESNext",
     "target": "es2022",
     "strict": true,
+    "noEmit": true,
+    "resolveJsonModule": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "moduleResolution": "node16",
-    "outDir": "dist"
+    "moduleResolution": "bundler",
+    "outDir": "dist",
+    "types": ["hardhat", "hardhat-viem", "viem"]
   }
 }

@@ -23,6 +23,15 @@ const config: HardhatUserConfig = {
         },
       },
     ],
+    npmFilesToBuild: [
+      "@safe-global/safe-contracts/contracts/SafeL2.sol",
+      "@safe-global/safe-contracts/contracts/proxies/SafeProxyFactory.sol",
+      "@safe-global/safe-contracts/contracts/libraries/MultiSend.sol",
+      "@safe-global/safe-contracts/contracts/libraries/MultiSendCallOnly.sol",
+      "@safe-global/safe-contracts/contracts/libraries/SignMessageLib.sol",
+      "@safe-global/safe-contracts/contracts/libraries/CreateCall.sol",
+      "@safe-global/safe-contracts/contracts/handler/CompatibilityFallbackHandler.sol",
+    ],
   },
   networks: {
     hardhatMainnet: {
