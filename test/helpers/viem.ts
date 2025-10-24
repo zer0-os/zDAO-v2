@@ -29,14 +29,3 @@ export const setupViem = async (walletCount = 4) => {
   const wallets = all.slice(0, walletCount) as Array<Wallet>;
   return { viem, wallets } as const;
 };
-
-// deploy by contract name; return is correctly typed to that contract
-export const deploy = async <Name extends ContractName>(
-  viem : Viem,
-  name : Name,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ...args : Array<any> // args validated by viem at runtime; keeps tests ergonomic
-) : Promise<Contract<Name>> =>
-  // @ts-expect-error viem’s deployContract has multiple call signatures; runtime validation covers args
-  viem.deployContract(name, args);
-
