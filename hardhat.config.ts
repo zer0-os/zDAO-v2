@@ -13,7 +13,6 @@ const config : HardhatUserConfig = {
     hardhatMocha,
   ],
   solidity: {
-    npmFilesToBuild: ["@openzeppelin/contracts/governance/TimelockController.sol"],
     compilers: [
       {
         version: "0.8.30",
@@ -33,6 +32,7 @@ const config : HardhatUserConfig = {
       "@safe-global/safe-contracts/contracts/libraries/SignMessageLib.sol",
       "@safe-global/safe-contracts/contracts/libraries/CreateCall.sol",
       "@safe-global/safe-contracts/contracts/handler/CompatibilityFallbackHandler.sol",
+      "@openzeppelin/contracts/governance/TimelockController.sol",
     ],
   },
   networks: {
