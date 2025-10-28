@@ -7,7 +7,7 @@ import { encodeFunctionData } from "viem";
 import { type Contract, type Wallet } from "./helpers/viem";
 
 
-describe("ZDAO", () => {
+describe("ZDAO main features flow test", () => {
   let viem : HardhatViemHelpers;
   let networkHelpers;
 
@@ -195,15 +195,26 @@ describe("ZDAO", () => {
     );
   });
 
-  it("Should create, vote for, queue and execute a proposal successfully", async () => {
+  it("Should create," +
+    "vote for UPDATE QUORUM," +
+    "queue," +
+    "execute a proposal successfully" +
+    "and have changed quorum", async () => {
+
+    const currentQuorumNumerator = await governance20.read.quorumNumerator();
+    const newQuorumNumerator = currentQuorumNumerator + 1n;
+
     const calldata = encodeFunctionData({
       abi: governance20.abi,
       functionName: "updateQuorumNumerator",
-      args: [quorumPercentage + 1n],
+      args: [newQuorumNumerator],
     });
 
     const proposalDescription = "Increase quorum percentage by 1";
-    const proposalDescriptionHash = ethers.keccak256(ethers.toUtf8Bytes(proposalDescription));
+    const proposalDescriptionHash = ethers.keccak256(
+      ethers.toUtf8Bytes(proposalDescription)
+    ) as `0x${string}`;     // TODO: Is typing OK?
+
     await governance20.write.propose([
       [ governance20.address ],
       [ 0n ],
@@ -250,5 +261,78 @@ describe("ZDAO", () => {
     ], {
       account: admin.account.address,
     });
+
+    expect(
+      await governance20.read.quorumNumerator()
+    ).to.equal(
+      newQuorumNumerator
+    );
+  });
+
+  it("Delegates may vote on behalf of multiple token holders", async () => {
+    const user1InitialBalance = await votingERC20.read.balanceOf([user1.account.address]);
+    const user2InitialBalance = await votingERC20.read.balanceOf([user2.account.address]);
+    const adminInitialBalance = await votingERC20.read.balanceOf([admin.account.address]);
+
+    // user2 delegates to user1
+    await votingERC20.write.delegate([user1.account.address], {
+      account: user2.account.address,
+    });
+    // admin delegates to user1
+    await votingERC20.write.delegate([user1.account.address], {
+      account: admin.account.address,
+    });
+    // mine 1 block so info about delegations can be updated
+    await networkHelpers.mine(2);
+
+    const calldata = encodeFunctionData({
+      abi: votingERC20.abi,
+      functionName: "mint",
+      args: [user1.account.address, ethers.parseUnits("1")],
+    });
+    const proposalDescription = "Mint 1 token to user1";
+    const proposalDescriptionHash = ethers.keccak256(
+      ethers.toUtf8Bytes(proposalDescription)
+    ) as `0x${string}`;     // TODO: Is typing OK?
+
+    await governance20.write.propose([
+      [ votingERC20.address ],
+      [ 0n ],
+      [ calldata ],
+      proposalDescription,
+    ], {
+      account: user1.account.address,
+    });
+
+    const proposalId = await governance20.read.getProposalId([
+      [ votingERC20.address ],
+      [ 0n ],
+      [ calldata ],
+      proposalDescriptionHash,
+    ]);
+
+    await networkHelpers.mine(delay + 1);
+
+    await governance20.write.castVote([
+      proposalId,
+      1,
+    ], {
+      account: user1.account.address,
+    });
+
+    await networkHelpers.mine(votingPeriod + 1);
+
+    const currentVotes = await governance20.read.getVotes([
+      user1.account.address,
+      await networkHelpers.time.latestBlock() - 1,
+    ], {
+      account: user1.account.address,
+    });
+
+    expect(currentVotes).to.equal(
+      user1InitialBalance +
+      user2InitialBalance +
+      adminInitialBalance
+    );
   });
 });
