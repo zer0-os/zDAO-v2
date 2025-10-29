@@ -1,5 +1,6 @@
 import type { HardhatUserConfig } from "hardhat/config";
 import { configVariable } from "hardhat/config";
+import typechain from "@nomicfoundation/hardhat-typechain"
 import hardhatViem from "@nomicfoundation/hardhat-viem";
 import hardhatToolboxViem from "@nomicfoundation/hardhat-toolbox-viem";
 import hardhatMocha from "@nomicfoundation/hardhat-mocha";
@@ -9,7 +10,8 @@ const config: HardhatUserConfig = {
   plugins: [
     hardhatToolboxViem,
     hardhatViem,
-    hardhatMocha
+    hardhatMocha,
+    typechain
   ],
   solidity: {
     compilers: [
@@ -23,6 +25,9 @@ const config: HardhatUserConfig = {
         },
       },
     ],
+  },
+  typechain: {
+    outDir: "typechain",
   },
   networks: {
     hardhatMainnet: {

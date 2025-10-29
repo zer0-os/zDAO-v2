@@ -49,7 +49,7 @@ describe("ZDAO", async () => {
 
     const [ admin, userA, userB ] = await viem.getWalletClients();
 
-    const zTreasuryHub = await viem.deployContract(
+    const zeroTreasuryHub = await viem.deployContract(
       "ZeroTreasuryHub",
       [
         admin.account.address,
@@ -93,7 +93,7 @@ describe("ZDAO", async () => {
   }
 
   it("should work", async () => {
-    console.log(zeroTreasuryHub.address);
+    console.log();
   });
 
   // TODO re add the prior tests

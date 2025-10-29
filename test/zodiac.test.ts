@@ -1,8 +1,25 @@
 import hre from "hardhat";
 import { expect } from "chai";
-import { WalletClient, keccak256, toHex, encodeFunctionData } from "viem";
+import { WalletClient, keccak256, toHex, encodeFunctionData, GetContractReturnType, PublicClient, Address } from "viem";
 import type { HardhatViemHelpers } from "@nomicfoundation/hardhat-viem/types";
-import { NetworkConnection } from "hardhat/types/network"
+import type { NetworkHelpers } from "@nomicfoundation/hardhat-network-helpers/types";
+
+import AvatarArtifact from "../artifacts/contracts/zodiac/TestAvatar.sol/TestAvatar.json";
+import MultisnedEncoderArtifact from "../artifacts/contracts/zodiac/MultisendEncoder.sol/MultisendEncoder.json";
+import ZeroVotingERC20Artifact from "../artifacts/contracts/voting/ZeroVotingERC20.sol/ZeroVotingERC20.json";
+import OZGovernorModuleArtifact from "../artifacts/contracts/zodiac/OZGovernorModule.sol/OZGovernorModule.json";
+
+
+// Typing the viem objects with Typechain types causes many issues
+// How else to get compiled types?
+// generated artifacts do not contain relevant call information
+// TODO Get typed contract from ABI or similar??
+// import {
+//   TestAvatar,
+//   MultisendEncoder,
+//   ZeroVotingERC20,
+//   OZGovernorModule
+// } from "../typechain/index.js";
 
 import { 
   DEFAULT_DELAY, 
@@ -12,18 +29,32 @@ import {
   DEFAULT_VOTING_PERIOD 
 } from "./helpers/constants.js"
 
-describe("OZGovernorModule", async () => {
+describe("Zodiac Setup", async () => {
+  let viem: HardhatViemHelpers;
+  let networkHelpers: NetworkHelpers;
+
+  // let avatar: any; //TestAvatar;
+  // let multisend: any; //MultisendEncoder;
+  // let votingToken: any; //ZeroVotingERC20;
+  // let governorModule: any; //OZGovernorModule;
+
   let admin: WalletClient;
   let userA: WalletClient;
   let userB: WalletClient;
 
-  let viem: HardhatViemHelpers;
-  let networkHelpers: any;
+  type Deployment = Awaited<ReturnType<typeof deploymentFixture>>;
 
-  let avatar: any; // TestAvatar
-  let multisend: any; // MultiSend from Gnosis Safe
-  let votingToken: any; // ZeroVotingERC20
-  let governorModule: any; // OZGovernorModule
+  let avatar: Deployment["avatar"];
+  let multisend: Deployment["multisend"];
+  let votingToken: Deployment["votingToken"];
+  let governorModule: Deployment["governorModule"];
+
+  let accounts : any;
+  
+  // let multisend: Awaited<ReturnType<HardhatViemHelpers["deployContract"]>>;
+  // let votingToken: Awaited<ReturnType<HardhatViemHelpers["deployContract"]>>;
+  // let governorModule: Awaited<ReturnType<HardhatViemHelpers["deployContract"]>>;
+
 
   before(async () => {
     const connection = await hre.network.connect();
@@ -36,12 +67,16 @@ describe("OZGovernorModule", async () => {
       avatar,
       multisend,
       votingToken,
-      governorModule
+      governorModule,
+      accounts
     } = await networkHelpers.loadFixture(deploymentFixture));
+
+    [ admin, userA, userB ] = [ ...accounts ];
   });
 
+  ///////////////////////////////////
   // Fixture for init contract deployment
-  async function deploymentFixture(): Promise<any> {
+  async function deploymentFixture() {
     const [admin, userA, userB] = await viem.getWalletClients();
 
     // Deploy TestAvatar (acts as the Safe/Avatar)
@@ -67,19 +102,31 @@ describe("OZGovernorModule", async () => {
 
     // Deploy OZGovernorModule with all required parameters
     // TODO does viem handle encoding here?
+    /**
+      address _owner,
+      address _target,
+      address _multisend,
+      address _token,
+      string memory _name,
+      uint48 _votingDelay,
+      uint32 _votingPeriod,
+      uint256 _proposalThreshold,
+      uint256 _quorum,
+      uint48 _initialVoteExtension
+     */
     const governorModule = await viem.deployContract(
       "OZGovernorModule",
       [
-        admin.account!.address,         // _owner
-        avatar.address,                 // _target (avatar address)
-        multisend.address,              // _multisend
-        votingToken.address,            // _token
-        "OZ Governor Module",           // _name
-        BigInt(DEFAULT_DELAY),          // _votingDelay
-        BigInt(DEFAULT_VOTING_PERIOD),  // _votingPeriod
-        DEFAULT_PROPOSAL_THRESHOLD_20,  // _proposalThreshold
-        DEFAULT_QUORUM_PERCENTAGE,      // _quorum
-        BigInt(DEFAULT_VOTE_EXTENSION)  // _initialVoteExtension
+        admin.account!.address,
+        avatar.address,
+        multisend.address,
+        votingToken.address,
+        "OZ Governor Module",
+        BigInt(DEFAULT_DELAY),
+        BigInt(DEFAULT_VOTING_PERIOD),
+        DEFAULT_PROPOSAL_THRESHOLD_20,
+        DEFAULT_QUORUM_PERCENTAGE,
+        BigInt(DEFAULT_VOTE_EXTENSION)
       ]
     );
 
@@ -95,9 +142,12 @@ describe("OZGovernorModule", async () => {
     };
   }
 
+  it("works", async () => {
+    
+  });
+
   describe("Deployment", () => {
     it("should have correct owner", async () => {
-      const [admin] = await viem.getWalletClients();
       const owner = await governorModule.read.owner();
       expect(owner.toLowerCase()).to.equal(admin.account!.address.toLowerCase());
     });
@@ -157,11 +207,12 @@ describe("OZGovernorModule", async () => {
       expect(tokenAddress.toLowerCase()).to.equal(votingToken.address.toLowerCase());
     });
 
-    it("should allow token holders to delegate", async () => {
-      const [admin] = await viem.getWalletClients();
-      
+    it("should allow token holders to delegate", async () => {      
       // Admin should have tokens from initial mint
       const balance = await votingToken.read.balanceOf([admin.account!.address]);
+      // TODO fix, 0 balance, should have some before testing
+      console.log("reading balance: ", balance);
+
       expect(Number(balance)).to.be.greaterThan(0);
 
       // Delegate to self
