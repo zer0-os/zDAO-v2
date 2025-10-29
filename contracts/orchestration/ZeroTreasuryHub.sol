@@ -97,6 +97,7 @@ contract ZeroTreasuryHub {
     }
 
     // <--- Treasury Creation --->
+    // TODO proto: should these be composable contracts we can evolve over time? Also separate from registry??
 
     function createSafe(
         bytes32 domain,
@@ -143,6 +144,7 @@ contract ZeroTreasuryHub {
         address safeAddress = address(safe);
 
         treasuries[domain] = TreasuryComponents({ safe: safeAddress });
+        // TODO proto: extend this event to inclide function parameters for Safe
         emit SafeTreasuryInstanceCreated(domain, safeAddress);
 
         return safeAddress;

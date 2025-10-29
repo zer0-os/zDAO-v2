@@ -21,17 +21,18 @@
     }
   },
   "compilerOptions": {
-    "outDir": "dist",
+    "lib": ["es2023"],
+    "module": "ESNext",
     "target": "es2022",
-    "module": "node16",
-    "moduleResolution": "node16",
+    "strict": true,
+    "noEmit": true,
+    "resolveJsonModule": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "strict": true,
     "skipLibCheck": true,
-    "resolveJsonModule": true,
-    "strictPropertyInitialization": true,
-    "noImplicitAny": true,
-	"experimentalDecorators": true
+    "moduleResolution": "bundler",
+    "outDir": "dist",
+    "types": ["hardhat", "hardhat-viem", "viem"]
   }
 }

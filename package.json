@@ -6,6 +6,8 @@
   "scripts": {
     "typechain": "hardhat typechain",
     "compile": "hardhat compile",
+    "lint-ts": "yarn eslint ./test/** ./src/**",
+    "lint": "yarn lint-ts",
     "build": "yarn run clean && yarn run compile",
     "postbuild": "yarn save-tag",
     "clean": "hardhat clean",
@@ -40,6 +42,8 @@
     "@types/chai-as-promised": "^8.0.1",
     "@types/mocha": ">=10.0.10",
     "@types/node": "^22.8.5",
+    "@wagmi/cli": "^2.7.1",
+    "@zero-tech/eslint-config-cpt": "^0.2.8",
     "chai": "^5.1.2",
     "ethers": "^6.14.0",
     "forge-std": "foundry-rs/forge-std#v1.9.4",
@@ -47,7 +51,8 @@
     "mocha": "^11.7.4",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
-    "viem": "^2.38.3"
+    "viem": "^2.38.3",
+    "eslint": "^8.37.0"
   },
   "type": "module",
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
