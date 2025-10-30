@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
-import { Safe } from "@safe-global/safe-contracts/contracts/Safe.sol";
+import { SafeL2 } from "@safe-global/safe-contracts/contracts/SafeL2.sol";
 import { SafeProxyFactory } from "@safe-global/safe-contracts/contracts/proxies/SafeProxyFactory.sol";
 import { SafeProxy } from "@safe-global/safe-contracts/contracts/proxies/SafeProxy.sol";
 
@@ -30,16 +30,7 @@ contract ZeroTreasuryHub {
         address indexed safe
     );
 
-    /**
-     * @dev All available modules to be installed for any treasury.
-     * Lists all predeployed preset contracts to be cloned.
-     */
-    // TODO proto: change this to be a mapping where the key = keccak256(abi.encodePacked(namespace, ":", name, ":", versionString))
-    //      e.g.: "OZ:Governor_V1:v1", "ZODIAC:Roles:v4", etc. think on this and make it better.
-    //      this way we don't need to upgrade and we can easily add new modules over time.
-    //      if doing so, we need to store all available keys in an array.
-    //      Another way would be to store a struct with metadata on the end of the mapping instead of just plain address
-    //      Also need to write a deterministic helper that can create and acquire these keys for apps and such. Readable names for modules could help in events.
+
     struct ModuleCatalog {
         address safe;
 //        address governor;
@@ -51,13 +42,13 @@ contract ZeroTreasuryHub {
      */
     struct TreasuryComponents {
         address safe;
-//        address governor;
+        address governor;
 //        address timelock;
     }
 
     // TODO proto: figure these proper ones out for ZChain!
     struct SafeSystem {
-        // Safe contract used
+        // Safe (SafeL2) contract used
         address singleton;
         // Proxy factory used to deploy new safes
         address proxyFactory;
@@ -66,7 +57,17 @@ contract ZeroTreasuryHub {
     }
 
     SafeSystem public safeSystem;
-    ModuleCatalog public moduleCatalog;
+    /**
+     * @dev All available modules to be installed for any treasury.
+     * Lists all predeployed preset contracts to be cloned.
+     */
+    // mapping where the key = keccak256(abi.encodePacked(namespace, ":", name, ":", versionString))
+    //      e.g.: "OZ:Governor_V1:v1", "ZODIAC:Roles:v4", etc. think on this and make it better.
+    //      this way we don't need to upgrade and we can easily add new modules over time.
+    //      if doing so, we need to store all available keys in an array.
+    //      Another way would be to store a struct with metadata on the end of the mapping instead of just plain address
+    //      Also need to write a deterministic helper that can create and acquire these keys for apps and such. Readable names for modules could help in events.
+    mapping(bytes32 moduleKey => address module) public moduleCatalog;
 
     /**
      * @dev Mapping from ZNS domain hash to the addresses of components for each treasury.
@@ -116,7 +117,7 @@ contract ZeroTreasuryHub {
 
         // TODO proto: figure out if we ever need to set to/data/payment stuff ?
         bytes memory setup = abi.encodeWithSelector(
-            Safe.setup.selector,
+            SafeL2.setup.selector,
             owners,
             threshold,
             // to
@@ -143,7 +144,7 @@ contract ZeroTreasuryHub {
 
         address safeAddress = address(safe);
 
-        treasuries[domain] = TreasuryComponents({ safe: safeAddress });
+        treasuries[domain] = TreasuryComponents({ safe: safeAddress, governor: address(0) });
         // TODO proto: extend this event to inclide function parameters for Safe
         emit SafeTreasuryInstanceCreated(domain, safeAddress);
 
