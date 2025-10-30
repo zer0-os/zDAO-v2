@@ -5,11 +5,12 @@ import { DEFAULT_ADMIN_ROLE } from "../src/constants.js";
 import { HardhatViemHelpers } from "@nomicfoundation/hardhat-viem/types";
 import { encodeFunctionData } from "viem";
 import { type Contract, type Wallet } from "./helpers/viem";
+import { NetworkHelpers } from "@nomicfoundation/hardhat-network-helpers/types";
 
 
 describe("ZDAO main features flow test", () => {
   let viem : HardhatViemHelpers;
-  let networkHelpers;
+  let networkHelpers : NetworkHelpers;
 
   let admin : Wallet;
   let user1 : Wallet;
@@ -106,21 +107,6 @@ describe("ZDAO main features flow test", () => {
       govParams
     );
 
-    return ({
-      votingERC20,
-      timelock,
-      governance20,
-    });
-  }
-
-  before(async () => {
-    ({ viem, networkHelpers } = await hre.network.connect());
-    ({
-      votingERC20,
-      timelock,
-      governance20,
-    } = await networkHelpers.loadFixture(fixture));
-
     // Grant proposer and executor role to the gov contract to use proposals
     await timelock.write.grantRole([
       await timelock.read.PROPOSER_ROLE(),
@@ -155,6 +141,21 @@ describe("ZDAO main features flow test", () => {
 
     // mine 1 block so info about delegations can be updated
     await networkHelpers.mine(2);
+
+    return ({
+      votingERC20,
+      timelock,
+      governance20,
+    });
+  }
+
+  beforeEach(async () => {
+    ({ viem, networkHelpers } = await hre.network.connect());
+    ({
+      votingERC20,
+      timelock,
+      governance20,
+    } = await networkHelpers.loadFixture(fixture));
   });
 
   it("should have Voting20 deployed with DAO using viem", async () => {
@@ -196,7 +197,7 @@ describe("ZDAO main features flow test", () => {
   });
 
   it("Should create," +
-    "vote for UPDATE QUORUM," +
+    "vote for UPDATE QUORUM NUMERATOR," +
     "queue," +
     "execute a proposal successfully" +
     "and have changed quorum", async () => {
@@ -322,9 +323,10 @@ describe("ZDAO main features flow test", () => {
 
     await networkHelpers.mine(votingPeriod + 1);
 
+    const latestBlock = await networkHelpers.time.latestBlock();
     const currentVotes = await governance20.read.getVotes([
       user1.account.address,
-      await networkHelpers.time.latestBlock() - 1,
+      BigInt(latestBlock - 1),
     ], {
       account: user1.account.address,
     });
@@ -334,5 +336,65 @@ describe("ZDAO main features flow test", () => {
       user2InitialBalance +
       adminInitialBalance
     );
+  });
+
+  it("Should succesfully create and execute generic proposal by passing read function to the calldata", async () => {
+    const calldata = encodeFunctionData({
+      abi: governance20.abi,
+      functionName: "votingDelay",
+      args: [],
+    });
+
+    const proposalDescription = "Shell we use generic proposals?";
+    const proposalDescriptionHash = ethers.keccak256(
+      ethers.toUtf8Bytes(proposalDescription)
+    ) as `0x${string}`;     // TODO: Is typing OK?
+
+    await governance20.write.propose([
+      [ governance20.address ],
+      [ 0n ],
+      [ calldata ],
+      proposalDescription,
+    ], {
+      account: admin.account.address,
+    });
+
+    const proposalId = await governance20.read.getProposalId([
+      [ governance20.address ],
+      [ 0n ],
+      [ calldata ],
+      proposalDescriptionHash,
+    ]);
+
+    await networkHelpers.mine(delay + 1);
+
+    await governance20.write.castVote([
+      proposalId,
+      1,
+    ], {
+      account: admin.account.address,
+    });
+
+    await networkHelpers.mine(votingPeriod + 1);
+
+    await governance20.write.queue([
+      [ governance20.address ],
+      [ 0n ],
+      [ calldata ],
+      proposalDescriptionHash,
+    ], {
+      account: admin.account.address,
+    });
+
+    await governance20.write.execute([
+      [governance20.address],
+      [0n],
+      [
+        calldata,
+      ],
+      proposalDescriptionHash,
+    ], {
+      account: admin.account.address,
+    });
   });
 });
