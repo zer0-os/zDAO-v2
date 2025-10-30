@@ -1,18 +1,18 @@
 import type { HardhatUserConfig } from "hardhat/config";
+// eslint-disable-next-line no-duplicate-imports
 import { configVariable } from "hardhat/config";
 import hardhatViem from "@nomicfoundation/hardhat-viem";
 import hardhatToolboxViem from "@nomicfoundation/hardhat-toolbox-viem";
 import hardhatMocha from "@nomicfoundation/hardhat-mocha";
 
 
-const config: HardhatUserConfig = {
+const config : HardhatUserConfig = {
   plugins: [
     hardhatToolboxViem,
     hardhatViem,
-    hardhatMocha
+    hardhatMocha,
   ],
   solidity: {
-    npmFilesToBuild: ["@openzeppelin/contracts/governance/TimelockController.sol"],
     compilers: [
       {
         version: "0.8.30",
@@ -23,6 +23,16 @@ const config: HardhatUserConfig = {
           },
         },
       },
+    ],
+    npmFilesToBuild: [
+      "@safe-global/safe-contracts/contracts/SafeL2.sol",
+      "@safe-global/safe-contracts/contracts/proxies/SafeProxyFactory.sol",
+      "@safe-global/safe-contracts/contracts/libraries/MultiSend.sol",
+      "@safe-global/safe-contracts/contracts/libraries/MultiSendCallOnly.sol",
+      "@safe-global/safe-contracts/contracts/libraries/SignMessageLib.sol",
+      "@safe-global/safe-contracts/contracts/libraries/CreateCall.sol",
+      "@safe-global/safe-contracts/contracts/handler/CompatibilityFallbackHandler.sol",
+      "@openzeppelin/contracts/governance/TimelockController.sol",
     ],
   },
   networks: {
