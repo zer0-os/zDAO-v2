@@ -77,15 +77,15 @@ describe.only("ZeroTreasuryHub Smoke Tests", () => {
       "main",
     ]);
 
-    ({
-      args: {
-        domain,
-        safe: safeAddress,
-      },
-    } = (await hub.getEvents.SafeTreasuryInstanceCreated())[0]);
+    const { args } = (await hub.getEvents.SafeTreasuryInstanceCreated())[0];
+    ({ domain, safeAddress } = args);
+    const { owners, threshold } = args;
 
     expect(domain).to.be.eq(domainHash);
+    // TODO proto: make a create2 and salt helper to validate deterministic safe addresses
     expect(isAddress(safeAddress)).to.be.true;
+    expect(owners?.map(e => e.toLowerCase())).to.have.members([user2.account.address, user3.account.address]);
+    expect(threshold).to.be.eq(2n);
 
     const [ safeFromMap ] = await hub.read.treasuries([domainHash]);
     expect(safeFromMap).to.be.eq(safeAddress);
