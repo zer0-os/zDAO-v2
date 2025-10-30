@@ -1,21 +1,30 @@
-import { type HardhatViemHelpers } from "@nomicfoundation/hardhat-viem/types";
-import { keccak256 } from "viem";
+import { type HardhatViemHelpers, type PublicClient } from "@nomicfoundation/hardhat-viem/types";
+import { type Address, type Hex, isAddress, keccak256, parseEther } from "viem";
 import { type Contract, setupViem, type Wallet } from "./helpers/viem";
+import Safe, {
+  type ContractNetworksConfig,
+} from "@safe-global/protocol-kit";
+import { expect } from "chai";
 
 
-describe("ZeroTreasuryHub Smoke Tests", () => {
+describe.only("ZeroTreasuryHub Smoke Tests", () => {
   let viem : HardhatViemHelpers;
 
+  let contractNetworks : ContractNetworksConfig;
+
+  let publicClient : PublicClient;
   let admin : Wallet;
   let user1 : Wallet;
   let user2 : Wallet;
   let user3 : Wallet;
 
-  // TODO proto: is this really the best way ?!
-  let theHub : Contract<"ZeroTreasuryHub">;
+  let hub : Contract<"ZeroTreasuryHub">;
   let safeSingleton : Contract<"SafeL2">;
   let proxyFactory : Contract<"SafeProxyFactory">;
   let fallbackHandler : Contract<"CompatibilityFallbackHandler">;
+
+  let safeAddress : Address;
+  let domain : Hex;
 
   before(async () => {
     ({ viem, wallets: [ admin, user1, user2, user3 ] } = await setupViem());
@@ -33,8 +42,23 @@ describe("ZeroTreasuryHub Smoke Tests", () => {
     const createCall = await viem.deployContract("CreateCall");
     fallbackHandler = await viem.deployContract("CompatibilityFallbackHandler");
 
+    publicClient = await viem.getPublicClient();
+    const chainId = await publicClient.getChainId();
+
+    contractNetworks = {
+      [chainId.toString()]: {
+        safeSingletonAddress: safeSingleton.address,          // your SafeL2
+        safeProxyFactoryAddress: proxyFactory.address,
+        fallbackHandlerAddress: fallbackHandler.address,
+        multiSendAddress: multiSend.address,
+        multiSendCallOnlyAddress: multiSendCallOnly.address,
+        signMessageLibAddress: signMessageLib.address,
+        createCallAddress: createCall.address,
+      },
+    };
+
     // Deploy the Hub
-    theHub = await viem.deployContract(
+    hub = await viem.deployContract(
       "ZeroTreasuryHub",
       [
         safeSingleton.address,
@@ -43,21 +67,86 @@ describe("ZeroTreasuryHub Smoke Tests", () => {
       ]);
   });
 
-  it("should deploy Safe from the hub", async () => {
-    await theHub.write.createSafe([
-      keccak256("0xmydomain"),
+  it("should deploy Safe from the Hub and save to Hub storage", async () => {
+    const domainHash = keccak256("0xmydomain");
+
+    await hub.write.createSafe([
+      domainHash,
       [user2.account.address, user3.account.address],
-      1n,
+      2n,
       "main",
     ]);
 
-    const {
+    ({
       args: {
         domain,
-        safe,
+        safe: safeAddress,
       },
-    } = (await theHub.getEvents.SafeTreasuryInstanceCreated())[0];
+    } = (await hub.getEvents.SafeTreasuryInstanceCreated())[0]);
 
-    console.log(`Domain: ${domain}. Safe ${safe}`);
+    expect(domain).to.be.eq(domainHash);
+    expect(isAddress(safeAddress)).to.be.true;
+
+    const [ safeFromMap ] = await hub.read.treasuries([domainHash]);
+    expect(safeFromMap).to.be.eq(safeAddress);
+  });
+
+  it("created safe should support on-chain transaction signing and executions", async () => {
+    const kitUser3 = await Safe.init({
+      provider: publicClient.transport,
+      signer: user3.account.address,
+      safeAddress,
+      contractNetworks,
+    });
+
+    // fund the safe
+    await user3.sendTransaction({
+      to: safeAddress ,
+      value: parseEther("1"),
+      account: user3.account,
+      chain: publicClient.chain,
+    });
+
+    const safeBalBefore  = await publicClient.getBalance({ address: safeAddress });
+    const user2BalBefore = await publicClient.getBalance({ address: user2.account.address });
+    const user3BalBefore = await publicClient.getBalance({ address: user3.account.address });
+
+    const amountToSend = parseEther("0.53");
+    const txData = await kitUser3.createTransaction({
+      transactions: [{
+        to: user2.account.address ,
+        value: amountToSend.toString(),
+        data: "0x",
+      }],
+    });
+
+    const txHash = await kitUser3.getTransactionHash(txData);
+
+    const sig1 = await kitUser3.signHash(txHash);
+    // make instance for user2 and sign
+    const kitUser2 = await kitUser3.connect({ signer: user2.account.address });
+    // TODO proto: need to check on-chain signatures as well
+    const sig2 = await kitUser2.signHash(txHash);
+
+    // add sigs
+    txData.addSignature(sig1);
+    txData.addSignature(sig2);
+
+    const { hash } = await kitUser2.executeTransaction(txData);
+    expect(hash).to.not.be.undefined;
+
+    const {
+      gasUsed,
+      effectiveGasPrice,
+    } = await publicClient.waitForTransactionReceipt({ hash: hash as Hex });
+    const gasCost = gasUsed * effectiveGasPrice;
+
+    const safeBalAfter  = await publicClient.getBalance({ address: safeAddress });
+    const user2BalAfter = await publicClient.getBalance({ address: user2.account.address });
+    const user3BalAfter = await publicClient.getBalance({ address: user3.account.address });
+
+    expect(safeBalAfter).to.equal(safeBalBefore - amountToSend);
+    expect(user2BalAfter).to.equal(user2BalBefore + amountToSend - gasCost);
+    expect(user3BalAfter).to.equal(user3BalBefore);
   });
 });

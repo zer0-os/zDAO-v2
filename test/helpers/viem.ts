@@ -10,6 +10,7 @@ export type ContractName = Parameters<Viem["deployContract"]>[0];
 // instance type returned by viem.deployContract for a given name
 export type Contract<Name extends ContractName> = ContractReturnType<Name>;
 export type Wallet = WalletClient & { account : Account; };
+export type Address = `0x${string}`;
 
 // <-- HELPERS -->
 // ensure a WalletClient definitely has an account (narrow once, use everywhere)
