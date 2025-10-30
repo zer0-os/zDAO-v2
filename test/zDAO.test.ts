@@ -5,11 +5,12 @@ import { DEFAULT_ADMIN_ROLE } from "../src/constants.js";
 import { HardhatViemHelpers } from "@nomicfoundation/hardhat-viem/types";
 import { encodeFunctionData } from "viem";
 import { type Contract, type Wallet } from "./helpers/viem";
+import { NetworkHelpers } from "@nomicfoundation/hardhat-network-helpers/types";
 
 
 describe("ZDAO main features flow test", () => {
   let viem : HardhatViemHelpers;
-  let networkHelpers;
+  let networkHelpers : NetworkHelpers;
 
   let admin : Wallet;
   let user1 : Wallet;
@@ -324,7 +325,7 @@ describe("ZDAO main features flow test", () => {
 
     const currentVotes = await governance20.read.getVotes([
       user1.account.address,
-      await networkHelpers.time.latestBlock() - 1,
+      BigInt(await networkHelpers.time.latestBlock() - 1),
     ], {
       account: user1.account.address,
     });
