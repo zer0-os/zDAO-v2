@@ -49,11 +49,13 @@ describe("ZDAO main features flow test", () => {
     number
   ];
 
-  const initialAdminBalance = ethers.parseUnits("100000000");
+  const initialAdminBalance = ethers.parseUnits("100000000000000");
   const initialUser1Balance = ethers.parseUnits("1000");
   const initialUser2Balance = ethers.parseUnits("200");
 
-  let votingERC20 : Contract<"ZeroVotingERC20">;
+  const votingTokenName = "MockZeroVotingERC20";
+
+  let votingERC20 : Contract<"MockZeroVotingERC20">;
   let timelock : Contract<"TimelockController">;
   let governance20 : Contract<"ZDAO">;
 
@@ -63,7 +65,7 @@ describe("ZDAO main features flow test", () => {
     [ admin, user1, user2 ] = await viem.getWalletClients();
 
     voting20Params = [
-      "ZeroVotingERC20",
+      votingTokenName,
       "ZV",
       "ZERO DAO",
       "1",
@@ -79,7 +81,7 @@ describe("ZDAO main features flow test", () => {
 
     // Deploy VotingERC20
     const votingERC20 = await viem.deployContract(
-      "ZeroVotingERC20",
+      votingTokenName,
       voting20Params
     );
 
@@ -106,21 +108,6 @@ describe("ZDAO main features flow test", () => {
       "ZDAO",
       govParams
     );
-
-    return ({
-      votingERC20,
-      timelock,
-      governance20,
-    });
-  }
-
-  before(async () => {
-    ({ viem, networkHelpers } = await hre.network.connect());
-    ({
-      votingERC20,
-      timelock,
-      governance20,
-    } = await networkHelpers.loadFixture(fixture));
 
     // Grant proposer and executor role to the gov contract to use proposals
     await timelock.write.grantRole([
@@ -156,11 +143,26 @@ describe("ZDAO main features flow test", () => {
 
     // mine 1 block so info about delegations can be updated
     await networkHelpers.mine(2);
+
+    return ({
+      votingERC20,
+      timelock,
+      governance20,
+    });
+  }
+
+  beforeEach(async () => {
+    ({ viem, networkHelpers } = await hre.network.connect());
+    ({
+      votingERC20,
+      timelock,
+      governance20,
+    } = await networkHelpers.loadFixture(fixture));
   });
 
   it("should have Voting20 deployed with DAO using viem", async () => {
     expect(votingERC20.address).to.exist;
-    expect(await votingERC20.read.name()).to.equal("ZeroVotingERC20");
+    expect(await votingERC20.read.name()).to.equal(votingTokenName);
     expect(await votingERC20.read.symbol()).to.equal("ZV");
 
     expect(timelock).to.exist;
@@ -334,6 +336,142 @@ describe("ZDAO main features flow test", () => {
       user1InitialBalance +
       user2InitialBalance +
       adminInitialBalance
+    );
+  });
+
+  it("Should succesfully create and execute generic proposal by PASSING READ FUNCTION to the calldata", async () => {
+    const calldata = encodeFunctionData({
+      abi: governance20.abi,
+      functionName: "votingDelay",
+      args: [],
+    });
+
+    const proposalDescription = "Shell we use generic proposals?";
+    const proposalDescriptionHash = ethers.keccak256(
+      ethers.toUtf8Bytes(proposalDescription)
+    ) as `0x${string}`;     // TODO: Is typing OK?
+
+    await governance20.write.propose([
+      [ governance20.address ],
+      [ 0n ],
+      [ calldata ],
+      proposalDescription,
+    ], {
+      account: admin.account.address,
+    });
+
+    const proposalId = await governance20.read.getProposalId([
+      [ governance20.address ],
+      [ 0n ],
+      [ calldata ],
+      proposalDescriptionHash,
+    ]);
+
+    await networkHelpers.mine(delay + 1);
+
+    await governance20.write.castVote([
+      proposalId,
+      1,
+    ], {
+      account: admin.account.address,
+    });
+
+    await networkHelpers.mine(votingPeriod + 1);
+
+    await governance20.write.queue([
+      [ governance20.address ],
+      [ 0n ],
+      [ calldata ],
+      proposalDescriptionHash,
+    ], {
+      account: admin.account.address,
+    });
+
+    await governance20.write.execute([
+      [governance20.address],
+      [0n],
+      [
+        calldata,
+      ],
+      proposalDescriptionHash,
+    ], {
+      account: admin.account.address,
+    });
+  });
+
+  it.skip("Should successfully execute a proposal to transfer tokens to user1", async () => {
+    const transferAmount = ethers.parseUnits("50");
+    const calldata = encodeFunctionData({
+      abi: votingERC20.abi,
+      functionName: "transfer",
+      args: [user1.account.address, transferAmount],
+    });
+
+    const proposalDescription = "Transfer 50 tokens to user1";
+    const proposalDescriptionHash = ethers.keccak256(
+      ethers.toUtf8Bytes(proposalDescription)
+    ) as `0x${string}`;     // TODO: Is typing OK?
+
+    const user1InitialBalance = await votingERC20.read.balanceOf([user1.account.address]);
+
+    await governance20.write.propose([
+      [ votingERC20.address ],
+      [ 0n ],
+      [ calldata ],
+      proposalDescription,
+    ], {
+      account: admin.account.address,
+    });
+
+    const proposalId = await governance20.read.getProposalId([
+      [ votingERC20.address ],
+      [ 0n ],
+      [ calldata ],
+      proposalDescriptionHash,
+    ]);
+
+    await networkHelpers.mine(delay + 1);
+
+    await governance20.write.castVote([
+      proposalId,
+      1,
+    ], {
+      account: admin.account.address,
+    });
+
+    await networkHelpers.mine(votingPeriod + 1);
+
+    await governance20.write.queue([
+      [ votingERC20.address ],
+      [ 0n ],
+      [ calldata ],
+      proposalDescriptionHash,
+    ], {
+      account: admin.account.address,
+    });
+
+    console.log("Admin: ", await votingERC20.read.balanceOf([admin.account.address]));
+    console.log("User1: ", await votingERC20.read.balanceOf([user1.account.address]));
+    console.log("Gover: ", await votingERC20.read.balanceOf([governance20.address]));
+    console.log("Admin address: ", admin.account.address);
+    console.log("User1 address: ", user1.account.address);
+    console.log("Gover address: ", governance20.address);
+
+    await governance20.write.execute([
+      [votingERC20.address],
+      [0n],
+      [
+        calldata,
+      ],
+      proposalDescriptionHash,
+    ], {
+      account: admin.account.address,
+    });
+
+    const user1FinalBalance = await votingERC20.read.balanceOf([user1.account.address]);
+
+    expect(user1FinalBalance).to.equal(
+      user1InitialBalance + transferAmount
     );
   });
 });
