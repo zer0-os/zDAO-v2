@@ -141,6 +141,13 @@ describe("ZDAO main features flow test", () => {
     await votingERC20.write.delegate([user1.account.address], { account: user1.account.address });
     await votingERC20.write.delegate([user2.account.address], { account: user2.account.address });
 
+    // fund timelock
+    await votingERC20.write.mint([
+      timelock.address, ethers.parseUnits("100000000"),
+    ], {
+      account: admin.account.address,
+    });
+
     // mine 1 block so info about delegations can be updated
     await networkHelpers.mine(2);
 
@@ -399,7 +406,7 @@ describe("ZDAO main features flow test", () => {
     });
   });
 
-  it.skip("Should successfully execute a proposal to transfer tokens to user1", async () => {
+  it("Should successfully execute a proposal to transfer tokens to user1", async () => {
     const transferAmount = ethers.parseUnits("50");
     const calldata = encodeFunctionData({
       abi: votingERC20.abi,
@@ -450,13 +457,6 @@ describe("ZDAO main features flow test", () => {
       account: admin.account.address,
     });
 
-    console.log("Admin: ", await votingERC20.read.balanceOf([admin.account.address]));
-    console.log("User1: ", await votingERC20.read.balanceOf([user1.account.address]));
-    console.log("Gover: ", await votingERC20.read.balanceOf([governance20.address]));
-    console.log("Admin address: ", admin.account.address);
-    console.log("User1 address: ", user1.account.address);
-    console.log("Gover address: ", governance20.address);
-
     await governance20.write.execute([
       [votingERC20.address],
       [0n],
@@ -473,5 +473,56 @@ describe("ZDAO main features flow test", () => {
     expect(user1FinalBalance).to.equal(
       user1InitialBalance + transferAmount
     );
+  });
+
+  it("Should let vote FOR/AGAINST/ABSTAIN and count votes correctly", async () => {
+    const calldata = encodeFunctionData({
+      abi: governance20.abi,
+      functionName: "votingDelay",
+      args: [],
+    });
+    const proposalDescription = "Check voting options";
+    const proposalDescriptionHash = ethers.keccak256(
+      ethers.toUtf8Bytes(proposalDescription)
+    ) as `0x${string}`;     // TODO: Is typing OK?
+    await governance20.write.propose([
+      [ governance20.address ],
+      [ 0n ],
+      [ calldata ],
+      proposalDescription,
+    ], {
+      account: admin.account.address,
+    });
+    const proposalId = await governance20.read.getProposalId([
+      [ governance20.address ],
+      [ 0n ],
+      [ calldata ],
+      proposalDescriptionHash,
+    ]);
+    await networkHelpers.mine(delay + 1);
+
+    await governance20.write.castVote([
+      proposalId,
+      1,
+    ], {
+      account: admin.account.address,
+    });
+    await governance20.write.castVote([
+      proposalId,
+      0,
+    ], {
+      account: user1.account.address,
+    });
+    await governance20.write.castVote([
+      proposalId,
+      2,
+    ], {
+      account: user2.account.address,
+    });
+    const proposalVotes = await governance20.read.proposalVotes([proposalId]);
+
+    expect(proposalVotes[0]).to.equal(initialUser1Balance);
+    expect(proposalVotes[1]).to.equal(initialAdminBalance);
+    expect(proposalVotes[2]).to.equal(initialUser2Balance);
   });
 });
