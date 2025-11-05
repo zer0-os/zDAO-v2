@@ -525,4 +525,61 @@ describe("ZDAO main features flow test", () => {
     expect(proposalVotes[1]).to.equal(initialAdminBalance);
     expect(proposalVotes[2]).to.equal(initialUser2Balance);
   });
+
+  it("Should execute generic proposal by calling #executeSignal", async () => {
+    const description = "Execute Generic Proposal";
+    const descriptionHash = ethers.keccak256(
+      ethers.toUtf8Bytes(description)
+    ) as `0x${string}`;     // TODO: Is typing OK?
+
+    const calldata = encodeFunctionData({
+      abi: governance20.abi,
+      functionName: "executeSignal",
+      args: [
+        description,
+      ],
+    });
+
+    await governance20.write.propose([
+      [ governance20.address ],
+      [ 0n ],
+      [ calldata ],
+      description,
+    ], {
+      account: admin.account.address,
+    });
+
+    const argWithHash = [
+      [ governance20.address ],
+      [ 0n ],
+      [ calldata ],
+      descriptionHash,
+    ];
+    const proposalId = await governance20.read.getProposalId(argWithHash);
+
+    await networkHelpers.mine(delay + 1);
+
+    await governance20.write.castVote([
+      proposalId,
+      1,
+    ], {
+      account: admin.account.address,
+    });
+
+    await networkHelpers.mine(votingPeriod + 1);
+
+    await governance20.write.queue(argWithHash, {
+      account: admin.account.address,
+    });
+
+    await governance20.write.execute(argWithHash, {
+      account: admin.account.address,
+    });
+
+    const eventLog = await governance20.getEvents.Signal();
+
+    const genericProposalEvent = eventLog.find((event => event.args.description === description));
+
+    expect(genericProposalEvent).to.exist;
+  });
 });

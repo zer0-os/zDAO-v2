@@ -17,6 +17,8 @@ import {
 import { GovernorPreventLateQuorum } from "@openzeppelin/contracts/governance/extensions/GovernorPreventLateQuorum.sol";
 
 
+event Signal(string description);
+
 contract ZDAO is
     Governor,
     GovernorSettings,
@@ -47,6 +49,14 @@ contract ZDAO is
         )
         GovernorVotesQuorumFraction(quorumPercentage_)
         GovernorPreventLateQuorum(voteExtension_) {}
+
+    function executeSignal(string memory description)
+    external 
+    onlyGovernance {
+        emit Signal(
+            description
+        );
+    }
 
     function votingDelay()
     public
