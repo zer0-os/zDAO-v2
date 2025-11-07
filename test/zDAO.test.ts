@@ -3,7 +3,7 @@ import { expect } from "chai";
 import { ethers } from "ethers";
 import { DEFAULT_ADMIN_ROLE } from "../src/constants.js";
 import { HardhatViemHelpers } from "@nomicfoundation/hardhat-viem/types";
-import { encodeFunctionData } from "viem";
+import { ContractFunctionExecutionError, encodeFunctionData } from "viem";
 import { type Contract, type Wallet } from "./helpers/viem";
 import { NetworkHelpers } from "@nomicfoundation/hardhat-network-helpers/types";
 
@@ -224,7 +224,7 @@ describe("ZDAO", () => {
       const proposalDescription = "Increase quorum percentage by 1";
       const proposalDescriptionHash = ethers.keccak256(
         ethers.toUtf8Bytes(proposalDescription)
-      ) as `0x${string}`;     // TODO: Is typing OK?
+      ) as `0x${string}`;
 
       await governance20.write.propose([
         [ governance20.address ],
@@ -304,7 +304,7 @@ describe("ZDAO", () => {
       const proposalDescription = "Mint 1 token to user1";
       const proposalDescriptionHash = ethers.keccak256(
         ethers.toUtf8Bytes(proposalDescription)
-      ) as `0x${string}`;     // TODO: Is typing OK?
+      ) as `0x${string}`;
 
       await governance20.write.propose([
         [ votingERC20.address ],
@@ -347,66 +347,6 @@ describe("ZDAO", () => {
       );
     });
 
-    it("Should succesfully create and execute generic proposal by PASSING READ FUNCTION to the calldata", async () => {
-      const calldata = encodeFunctionData({
-        abi: governance20.abi,
-        functionName: "votingDelay",
-        args: [],
-      });
-
-      const proposalDescription = "Shell we use generic proposals?";
-      const proposalDescriptionHash = ethers.keccak256(
-        ethers.toUtf8Bytes(proposalDescription)
-      ) as `0x${string}`;     // TODO: Is typing OK?
-
-      await governance20.write.propose([
-        [ governance20.address ],
-        [ 0n ],
-        [ calldata ],
-        proposalDescription,
-      ], {
-        account: admin.account.address,
-      });
-
-      const proposalId = await governance20.read.getProposalId([
-        [ governance20.address ],
-        [ 0n ],
-        [ calldata ],
-        proposalDescriptionHash,
-      ]);
-
-      await networkHelpers.mine(delay + 1);
-
-      await governance20.write.castVote([
-        proposalId,
-        1,
-      ], {
-        account: admin.account.address,
-      });
-
-      await networkHelpers.mine(votingPeriod + 1);
-
-      await governance20.write.queue([
-        [ governance20.address ],
-        [ 0n ],
-        [ calldata ],
-        proposalDescriptionHash,
-      ], {
-        account: admin.account.address,
-      });
-
-      await governance20.write.execute([
-        [governance20.address],
-        [0n],
-        [
-          calldata,
-        ],
-        proposalDescriptionHash,
-      ], {
-        account: admin.account.address,
-      });
-    });
-
     it("Should successfully execute a proposal to transfer tokens to user1", async () => {
       const transferAmount = ethers.parseUnits("50");
       const calldata = encodeFunctionData({
@@ -418,7 +358,7 @@ describe("ZDAO", () => {
       const proposalDescription = "Transfer 50 tokens to user1";
       const proposalDescriptionHash = ethers.keccak256(
         ethers.toUtf8Bytes(proposalDescription)
-      ) as `0x${string}`;     // TODO: Is typing OK?
+      ) as `0x${string}`;
 
       const user1InitialBalance = await votingERC20.read.balanceOf([user1.account.address]);
 
@@ -485,7 +425,7 @@ describe("ZDAO", () => {
       const proposalDescription = "Check voting options";
       const proposalDescriptionHash = ethers.keccak256(
         ethers.toUtf8Bytes(proposalDescription)
-      ) as `0x${string}`;     // TODO: Is typing OK?
+      ) as `0x${string}`;
       await governance20.write.propose([
         [ governance20.address ],
         [ 0n ],
@@ -526,12 +466,87 @@ describe("ZDAO", () => {
       expect(proposalVotes[1]).to.equal(initialAdminBalance);
       expect(proposalVotes[2]).to.equal(initialUser2Balance);
     });
+  });
 
-    it("Should execute generic proposal by calling #executeSignal", async () => {
+  describe("Generic proposals", () => {
+    beforeEach(async () => {
+      ({ viem, networkHelpers } = await hre.network.connect());
+      ({
+        votingERC20,
+        timelock,
+        governance20,
+      } = await networkHelpers.loadFixture(fixture));
+    });
+
+    it("Should succesfully create and execute proposal by PASSING READ FUNCTION to the calldata", async () => {
+      const calldata = encodeFunctionData({
+        abi: governance20.abi,
+        functionName: "votingDelay",
+        args: [],
+      });
+
+      const proposalDescription = "Shell we use generic proposals?";
+      const proposalDescriptionHash = ethers.keccak256(
+        ethers.toUtf8Bytes(proposalDescription)
+      ) as `0x${string}`;
+
+      await governance20.write.propose([
+        [ governance20.address ],
+        [ 0n ],
+        [ calldata ],
+        proposalDescription,
+      ], {
+        account: admin.account.address,
+      });
+
+      const proposalId = await governance20.read.getProposalId([
+        [ governance20.address ],
+        [ 0n ],
+        [ calldata ],
+        proposalDescriptionHash,
+      ]);
+
+      await networkHelpers.mine(delay + 1);
+
+      await governance20.write.castVote([
+        proposalId,
+        1,
+      ], {
+        account: admin.account.address,
+      });
+
+      await networkHelpers.mine(votingPeriod + 1);
+
+      await governance20.write.queue([
+        [ governance20.address ],
+        [ 0n ],
+        [ calldata ],
+        proposalDescriptionHash,
+      ], {
+        account: admin.account.address,
+      });
+
+      await governance20.write.execute([
+        [governance20.address],
+        [0n],
+        [
+          calldata,
+        ],
+        proposalDescriptionHash,
+      ], {
+        account: admin.account.address,
+      });
+
+      expect(
+        await governance20.getEvents.ProposalExecuted()
+      ).to.have.lengthOf(1);
+    });
+
+    it("Should succesfully execute a proposal and emit an event !Signal by passing #executeSignal", async () => {
       const description = "Execute Generic Proposal";
       const descriptionHash = ethers.keccak256(
         ethers.toUtf8Bytes(description)
-      ) as `0x${string}`;     // TODO: Is typing OK?
+      ) as `0x${string}`;
 
       const calldata = encodeFunctionData({
         abi: governance20.abi,
@@ -550,7 +565,12 @@ describe("ZDAO", () => {
         account: admin.account.address,
       });
 
-      const argWithHash = [
+      const argWithHash : [
+        ReadonlyArray<`0x${string}`>,
+        ReadonlyArray<bigint>,
+        ReadonlyArray<`0x${string}`>,
+        `0x${string}`
+      ] = [
         [ governance20.address ],
         [ 0n ],
         [ calldata ],
@@ -582,6 +602,25 @@ describe("ZDAO", () => {
       const genericProposalEvent = eventLog.find((event => event.args.description === description));
 
       expect(genericProposalEvent).to.exist;
+    });
+
+    it("Should NOT allow non-governon to #executeSignal itself", async () => {
+      const description = "Execute Generic Proposal";
+
+      let err : string | undefined;
+      try {
+        await governance20.write.executeSignal([description], {
+          account: admin.account.address,
+        });
+      } catch (error) {
+        err = (error as ContractFunctionExecutionError).details;
+      }
+
+      expect(
+        err
+      ).to.include(
+        "GovernorOnlyExecutor"
+      );
     });
   });
 });
