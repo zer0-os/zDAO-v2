@@ -1,136 +1,626 @@
 import hre from "hardhat";
 import { expect } from "chai";
 import { ethers } from "ethers";
-import { ZeroVotingERC20 } from "../types/ethers-contracts/voting/ZVoting20.sol/ZeroVotingERC20.js";
-import { ZDAO } from "../types/ethers-contracts/ZDAO.js";
+import { DEFAULT_ADMIN_ROLE } from "../src/constants.js";
+import { HardhatViemHelpers } from "@nomicfoundation/hardhat-viem/types";
+import { ContractFunctionExecutionError, encodeFunctionData } from "viem";
+import { type Contract, type Wallet } from "./helpers/viem";
+import { NetworkHelpers } from "@nomicfoundation/hardhat-network-helpers/types";
 
-
-let admin;
-let user1;
-let user2;
-
-let votingERC20 : ZeroVotingERC20;
-let governance20 : ZDAO;
-
-const delay = 1;
-const votingPeriod = 10;
-const proposalThreshold20 = ethers.parseUnits("100");
-const proposalThreshold721 = 1;
-const quorumPercentage = 10n;
-const voteExtension = 5;
 
 describe("ZDAO", () => {
-  const fixture = async () => {
-    const { viem, networkHelpers } = await hre.network.connect();
+  let viem : HardhatViemHelpers;
+  let networkHelpers : NetworkHelpers;
+
+  let admin : Wallet;
+  let user1 : Wallet;
+  let user2 : Wallet;
+
+  let voting20Params : [
+    string,
+    string,
+    string,
+    string,
+    `0x${string}`
+  ];
+
+  let timelockParams : [
+    bigint,
+    Array<`0x${string}`>,
+    Array<`0x${string}`>,
+    `0x${string}`
+  ];
+
+  const delay = 1;
+  const votingPeriod = 10;
+  const proposalThreshold20 = ethers.parseUnits("100");
+  const quorumPercentage = 10n;
+  const voteExtension = 5;
+
+  let govParams : [
+    bigint,
+    string,
+    `0x${string}`,
+    `0x${string}`,
+    number,
+    number,
+    bigint,
+    bigint,
+    number
+  ];
+
+  const initialAdminBalance = ethers.parseUnits("100000000000000");
+  const initialUser1Balance = ethers.parseUnits("1000");
+  const initialUser2Balance = ethers.parseUnits("200");
+
+  const votingTokenName = "MockZeroVotingERC20";
+
+  let votingERC20 : Contract<"MockZeroVotingERC20">;
+  let timelock : Contract<"TimelockController">;
+  let governance20 : Contract<"ZDAO">;
+
+  // eslint-disable-next-line prefer-arrow/prefer-arrow-functions
+  async function fixture () {
+    ({ viem, networkHelpers } = await hre.network.connect());
     [ admin, user1, user2 ] = await viem.getWalletClients();
-  };
 
-  it("should deploy Voting20 with DAO using viem", async () => {
-    const {
-      viem,
-      // networkHelpers
-    } = await hre.network.connect();
-
-    // networkHelpers.loadFixture(fixture);
-    await fixture();
-
-    const voting20Params = [
-      "ZeroVotingERC20",
+    voting20Params = [
+      votingTokenName,
       "ZV",
       "ZERO DAO",
       "1",
-      admin.account.address
-    ]
+      admin.account.address,
+    ];
 
-    const votingERC20 = await viem.deployContract(
-      "ZeroVotingERC20",
-      [
-        "ZeroVotingERC20",
-        "ZV",
-        "ZERO DAO",
-        "1",
-        admin.account.address
-      ]
+    timelockParams = [
+      1n,
+      [],
+      [],
+      admin.account.address,
+    ];
+
+    // Deploy VotingERC20
+    const votingToken = await viem.deployContract(
+      votingTokenName,
+      voting20Params
     );
-    expect(votingERC20).to.exist;
-    expect(votingERC20.address).to.exist;
 
-    // const timelock = await viem.deployContract(
-    //   "TimelockController",
-    //   [
-    //     1,
-    //     [],
-    //     [],
-    //     admin.account.address
-    //   ]
-    // );
-    // expect(timelock).to.exist;
+    // Deploy Timelock
+    const timelockController = await viem.deployContract(
+      "TimelockController",
+      timelockParams
+    );
 
-  //   const governance20 = await viem.deployContract(
-  //     "ZDAO",
-  //     [
-  //       1n,
-  //       "ZDAO",
-  //       votingERC20.address,
-  //       timelock.address,
-  //       delay,
-  //       votingPeriod,
-  //       proposalThreshold20,
-  //       quorumPercentage,
-  //       voteExtension,
-  //     ]);
-  //   expect(governance20).to.exist;
+    govParams = [
+      1n,
+      "ZDAO",
+      votingERC20.address,
+      timelock.address,
+      delay,
+      votingPeriod,
+      proposalThreshold20,
+      quorumPercentage,
+      voteExtension,
+    ];
+
+    // Deploy Governance
+    const governance = await viem.deployContract(
+      "ZDAO",
+      govParams
+    );
+
+    // Grant proposer and executor role to the gov contract to use proposals
+    await timelockController.write.grantRole([
+      await timelockController.read.PROPOSER_ROLE(),
+      governance.address,
+    ]);
+    await timelockController.write.grantRole([
+      await timelockController.read.EXECUTOR_ROLE(),
+      governance.address,
+    ]);
+
+    // Grant minter role to the timelock to let it execute proposal on mint
+    await votingToken.write.grantRole([
+      await votingToken.read.MINTER_ROLE(),
+      timelockController.address,
+    ]);
+
+    // Give minter role to admin
+    await votingToken.write.grantRole([
+      await votingToken.read.MINTER_ROLE(),
+      admin.account.address,
+    ]);
+
+    // Mint tokens to users
+    await votingToken.write.mint([admin.account.address, initialAdminBalance]);
+    await votingToken.write.mint([user1.account.address, initialUser1Balance]);
+    await votingToken.write.mint([user2.account.address, initialUser2Balance]);
+
+    // Delegate tokens to themselves for voting power
+    await votingToken.write.delegate([admin.account.address], { account: admin.account.address });
+    await votingToken.write.delegate([user1.account.address], { account: user1.account.address });
+    await votingToken.write.delegate([user2.account.address], { account: user2.account.address });
+
+    // fund timelock
+    await votingToken.write.mint([
+      timelockController.address, ethers.parseUnits("100000000"),
+    ], {
+      account: admin.account.address,
+    });
+
+    // mine 1 block so info about delegations can be updated
+    await networkHelpers.mine(2);
+
+    return ({
+      votingToken,
+      timelockController,
+      governance,
+    });
+  }
+
+  describe("Main features flow test", () => {
+    beforeEach(async () => {
+      ({ viem, networkHelpers } = await hre.network.connect());
+
+      const { votingToken, timelockController, governance } = await networkHelpers.loadFixture(fixture);
+      votingERC20 = votingToken;
+      timelock = timelockController;
+      governance20 = governance;
+    });
+
+    it("should have Voting20 deployed with DAO using viem", async () => {
+      expect(votingERC20.address).to.exist;
+      expect(await votingERC20.read.name()).to.equal(votingTokenName);
+      expect(await votingERC20.read.symbol()).to.equal("ZV");
+
+      expect(timelock).to.exist;
+      expect(await timelock.read.getMinDelay()).to.equal(timelockParams[0]);
+      expect(
+        await timelock.read.hasRole([
+          DEFAULT_ADMIN_ROLE,
+          admin.account.address,
+        ])
+      ).to.equal(true);
+
+      expect(governance20).to.exist;
+      expect(await governance20.read.name()).to.equal(govParams[1]);
+      expect(
+        (await governance20.read.token()).toLowerCase()
+      ).to.equal(
+        govParams[2].toLowerCase()
+      );
+      expect(
+        (await governance20.read.timelock()).toLowerCase()
+      ).to.equal(
+        govParams[3].toLowerCase()
+      );
+      expect(
+        await governance20.read.votingPeriod()
+      ).to.equal(
+        BigInt(govParams[5])
+      );
+      expect(
+        await governance20.read.proposalThreshold()
+      ).to.equal(
+        BigInt(govParams[6])
+      );
+    });
+
+    it("Should create," +
+    "vote for UPDATE QUORUM," +
+    "queue," +
+    "execute a proposal successfully" +
+    "and have changed quorum", async () => {
+
+      const currentQuorumNumerator = await governance20.read.quorumNumerator();
+      const newQuorumNumerator = currentQuorumNumerator + 1n;
+
+      const calldata = encodeFunctionData({
+        abi: governance20.abi,
+        functionName: "updateQuorumNumerator",
+        args: [newQuorumNumerator],
+      });
+
+      const proposalDescription = "Increase quorum percentage by 1";
+      const proposalDescriptionHash = ethers.keccak256(
+        ethers.toUtf8Bytes(proposalDescription)
+      ) as `0x${string}`;
+
+      await governance20.write.propose([
+        [ governance20.address ],
+        [ 0n ],
+        [ calldata ],
+        proposalDescription,
+      ], {
+        account: admin.account.address,
+      });
+
+      const proposalId = await governance20.read.getProposalId([
+        [ governance20.address ],
+        [ 0n ],
+        [ calldata ],
+        proposalDescriptionHash,
+      ]);
+
+      await networkHelpers.mine(delay + 1);
+
+      await governance20.write.castVote([
+        proposalId,
+        1,
+      ], {
+        account: admin.account.address,
+      });
+
+      await networkHelpers.mine(votingPeriod + 1);
+
+      await governance20.write.queue([
+        [ governance20.address ],
+        [ 0n ],
+        [ calldata ],
+        proposalDescriptionHash,
+      ], {
+        account: admin.account.address,
+      });
+
+      await governance20.write.execute([
+        [governance20.address],
+        [0n],
+        [
+          calldata,
+        ],
+        proposalDescriptionHash,
+      ], {
+        account: admin.account.address,
+      });
+
+      expect(
+        await governance20.read.quorumNumerator()
+      ).to.equal(
+        newQuorumNumerator
+      );
+    });
+
+    it("Delegates may vote on behalf of multiple token holders", async () => {
+      const user1InitialBalance = await votingERC20.read.balanceOf([user1.account.address]);
+      const user2InitialBalance = await votingERC20.read.balanceOf([user2.account.address]);
+      const adminInitialBalance = await votingERC20.read.balanceOf([admin.account.address]);
+
+      // user2 delegates to user1
+      await votingERC20.write.delegate([user1.account.address], {
+        account: user2.account.address,
+      });
+      // admin delegates to user1
+      await votingERC20.write.delegate([user1.account.address], {
+        account: admin.account.address,
+      });
+      // mine 1 block so info about delegations can be updated
+      await networkHelpers.mine(2);
+
+      const calldata = encodeFunctionData({
+        abi: votingERC20.abi,
+        functionName: "mint",
+        args: [user1.account.address, ethers.parseUnits("1")],
+      });
+      const proposalDescription = "Mint 1 token to user1";
+      const proposalDescriptionHash = ethers.keccak256(
+        ethers.toUtf8Bytes(proposalDescription)
+      ) as `0x${string}`;
+
+      await governance20.write.propose([
+        [ votingERC20.address ],
+        [ 0n ],
+        [ calldata ],
+        proposalDescription,
+      ], {
+        account: user1.account.address,
+      });
+
+      const proposalId = await governance20.read.getProposalId([
+        [ votingERC20.address ],
+        [ 0n ],
+        [ calldata ],
+        proposalDescriptionHash,
+      ]);
+
+      await networkHelpers.mine(delay + 1);
+
+      await governance20.write.castVote([
+        proposalId,
+        1,
+      ], {
+        account: user1.account.address,
+      });
+
+      await networkHelpers.mine(votingPeriod + 1);
+
+      const currentVotes = await governance20.read.getVotes([
+        user1.account.address,
+        BigInt(await networkHelpers.time.latestBlock() - 1),
+      ], {
+        account: user1.account.address,
+      });
+
+      expect(currentVotes).to.equal(
+        user1InitialBalance +
+      user2InitialBalance +
+      adminInitialBalance
+      );
+    });
+
+    it("Should successfully execute a proposal to transfer tokens to user1", async () => {
+      const transferAmount = ethers.parseUnits("50");
+      const calldata = encodeFunctionData({
+        abi: votingERC20.abi,
+        functionName: "transfer",
+        args: [user1.account.address, transferAmount],
+      });
+
+      const proposalDescription = "Transfer 50 tokens to user1";
+      const proposalDescriptionHash = ethers.keccak256(
+        ethers.toUtf8Bytes(proposalDescription)
+      ) as `0x${string}`;
+
+      const user1InitialBalance = await votingERC20.read.balanceOf([user1.account.address]);
+
+      await governance20.write.propose([
+        [ votingERC20.address ],
+        [ 0n ],
+        [ calldata ],
+        proposalDescription,
+      ], {
+        account: admin.account.address,
+      });
+
+      const proposalId = await governance20.read.getProposalId([
+        [ votingERC20.address ],
+        [ 0n ],
+        [ calldata ],
+        proposalDescriptionHash,
+      ]);
+
+      await networkHelpers.mine(delay + 1);
+
+      await governance20.write.castVote([
+        proposalId,
+        1,
+      ], {
+        account: admin.account.address,
+      });
+
+      await networkHelpers.mine(votingPeriod + 1);
+
+      await governance20.write.queue([
+        [ votingERC20.address ],
+        [ 0n ],
+        [ calldata ],
+        proposalDescriptionHash,
+      ], {
+        account: admin.account.address,
+      });
+
+      await governance20.write.execute([
+        [votingERC20.address],
+        [0n],
+        [
+          calldata,
+        ],
+        proposalDescriptionHash,
+      ], {
+        account: admin.account.address,
+      });
+
+      const user1FinalBalance = await votingERC20.read.balanceOf([user1.account.address]);
+
+      expect(user1FinalBalance).to.equal(
+        user1InitialBalance + transferAmount
+      );
+    });
+
+    it("Should let vote FOR/AGAINST/ABSTAIN and count votes correctly", async () => {
+      const calldata = encodeFunctionData({
+        abi: governance20.abi,
+        functionName: "votingDelay",
+        args: [],
+      });
+      const proposalDescription = "Check voting options";
+      const proposalDescriptionHash = ethers.keccak256(
+        ethers.toUtf8Bytes(proposalDescription)
+      ) as `0x${string}`;
+      await governance20.write.propose([
+        [ governance20.address ],
+        [ 0n ],
+        [ calldata ],
+        proposalDescription,
+      ], {
+        account: admin.account.address,
+      });
+      const proposalId = await governance20.read.getProposalId([
+        [ governance20.address ],
+        [ 0n ],
+        [ calldata ],
+        proposalDescriptionHash,
+      ]);
+      await networkHelpers.mine(delay + 1);
+
+      await governance20.write.castVote([
+        proposalId,
+        1,
+      ], {
+        account: admin.account.address,
+      });
+      await governance20.write.castVote([
+        proposalId,
+        0,
+      ], {
+        account: user1.account.address,
+      });
+      await governance20.write.castVote([
+        proposalId,
+        2,
+      ], {
+        account: user2.account.address,
+      });
+      const proposalVotes = await governance20.read.proposalVotes([proposalId]);
+
+      expect(proposalVotes[0]).to.equal(initialUser1Balance);
+      expect(proposalVotes[1]).to.equal(initialAdminBalance);
+      expect(proposalVotes[2]).to.equal(initialUser2Balance);
+    });
+  });
+
+  describe("Generic proposals", () => {
+    beforeEach(async () => {
+      ({ viem, networkHelpers } = await hre.network.connect());
+      ({
+        votingERC20,
+        timelock,
+        governance20,
+      } = await networkHelpers.loadFixture(fixture));
+    });
+
+    it("Should succesfully create and execute proposal by PASSING READ FUNCTION to the calldata", async () => {
+      const calldata = encodeFunctionData({
+        abi: governance20.abi,
+        functionName: "votingDelay",
+        args: [],
+      });
+
+      const proposalDescription = "Shell we use generic proposals?";
+      const proposalDescriptionHash = ethers.keccak256(
+        ethers.toUtf8Bytes(proposalDescription)
+      ) as `0x${string}`;
+
+      await governance20.write.propose([
+        [ governance20.address ],
+        [ 0n ],
+        [ calldata ],
+        proposalDescription,
+      ], {
+        account: admin.account.address,
+      });
+
+      const proposalId = await governance20.read.getProposalId([
+        [ governance20.address ],
+        [ 0n ],
+        [ calldata ],
+        proposalDescriptionHash,
+      ]);
+
+      await networkHelpers.mine(delay + 1);
+
+      await governance20.write.castVote([
+        proposalId,
+        1,
+      ], {
+        account: admin.account.address,
+      });
+
+      await networkHelpers.mine(votingPeriod + 1);
+
+      await governance20.write.queue([
+        [ governance20.address ],
+        [ 0n ],
+        [ calldata ],
+        proposalDescriptionHash,
+      ], {
+        account: admin.account.address,
+      });
+
+      await governance20.write.execute([
+        [governance20.address],
+        [0n],
+        [
+          calldata,
+        ],
+        proposalDescriptionHash,
+      ], {
+        account: admin.account.address,
+      });
+
+      expect(
+        await governance20.getEvents.ProposalExecuted()
+      ).to.have.lengthOf(1);
+    });
+
+    it("Should succesfully execute a proposal and emit an event !Signal by passing #executeSignal", async () => {
+      const description = "Execute Generic Proposal";
+      const descriptionHash = ethers.keccak256(
+        ethers.toUtf8Bytes(description)
+      ) as `0x${string}`;
+
+      const calldata = encodeFunctionData({
+        abi: governance20.abi,
+        functionName: "executeSignal",
+        args: [
+          description,
+        ],
+      });
+
+      await governance20.write.propose([
+        [ governance20.address ],
+        [ 0n ],
+        [ calldata ],
+        description,
+      ], {
+        account: admin.account.address,
+      });
+
+      const argWithHash : [
+        ReadonlyArray<`0x${string}`>,
+        ReadonlyArray<bigint>,
+        ReadonlyArray<`0x${string}`>,
+        `0x${string}`
+      ] = [
+        [ governance20.address ],
+        [ 0n ],
+        [ calldata ],
+        descriptionHash,
+      ];
+      const proposalId = await governance20.read.getProposalId(argWithHash);
+
+      await networkHelpers.mine(delay + 1);
+
+      await governance20.write.castVote([
+        proposalId,
+        1,
+      ], {
+        account: admin.account.address,
+      });
+
+      await networkHelpers.mine(votingPeriod + 1);
+
+      await governance20.write.queue(argWithHash, {
+        account: admin.account.address,
+      });
+
+      await governance20.write.execute(argWithHash, {
+        account: admin.account.address,
+      });
+
+      const eventLog = await governance20.getEvents.Signal();
+
+      const genericProposalEvent = eventLog.find((event => event.args.description === description));
+
+      expect(genericProposalEvent).to.exist;
+    });
+
+    it("Should NOT allow non-governon to #executeSignal itself", async () => {
+      const description = "Execute Generic Proposal";
+
+      let err : string | undefined;
+      try {
+        await governance20.write.executeSignal([description], {
+          account: admin.account.address,
+        });
+      } catch (error) {
+        err = (error as ContractFunctionExecutionError).details;
+      }
+
+      expect(
+        err
+      ).to.include(
+        "GovernorOnlyExecutor"
+      );
+    });
   });
 });
-
-// const { viem } = await network.connect();
-// votingERC20 = await viem.deployContract(
-//   "ZeroVotingERC20",
-//   [
-//     "ZV",
-//     "domname",
-//     "ZERO DAO",
-//     "1",
-//     "0x1234567890123456789012345678901234567890"
-//   ]
-// );
-
-// describe("ZDAO", () => {
-//   let dao;
-
-//   it("load fixture", async () => {
-//     const { viem } = await network.connect();
-//     votingERC20 = await viem.deployContract("ZeroVotingERC20");
-
-//     expect(votingERC20).to.exist;
-//     expect(votingERC20).to.not.be.undefined;
-//   });
-
-
-//   // beforeEach(async function () {
-    
-//   //   const voting20 = await viem.deployContract("ZeroVotingERC20");
-//   //   // const voting20 = await viem.deployContract("ZeroVotingERC20");
-//   //   const token = await voting20.deploy(
-//   //     "ZeroVotingERC20",
-//   //     "ZV",
-//   //     "ZERO DAO",
-//   //     "1",
-//   //     (await ethers.getSigners())[0]
-//   //   );
-//   //   await token.waitForDeployment();
-
-//   //   const ZDAO = await ethers.getContractFactory("ZDAO");
-//   //   dao = await ZDAO.deploy(
-//   //     1n,
-//   //     "ZDAO",
-//   //     token,
-//   //     delay,
-//   //     votingPeriod,
-//   //     proposalThreshold20,
-//   //     quorumPercentage,
-//   //     voteExtension,
-//   //   );
-//   //   await dao.waitForDeployment();
-//   // });
-// });
