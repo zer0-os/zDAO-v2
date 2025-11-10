@@ -80,13 +80,13 @@ describe("ZDAO", () => {
     ];
 
     // Deploy VotingERC20
-    const votingERC20 = await viem.deployContract(
+    const votingToken = await viem.deployContract(
       votingTokenName,
       voting20Params
     );
 
     // Deploy Timelock
-    const timelock = await viem.deployContract(
+    const timelockController = await viem.deployContract(
       "TimelockController",
       timelockParams
     );
@@ -104,46 +104,46 @@ describe("ZDAO", () => {
     ];
 
     // Deploy Governance
-    const governance20 = await viem.deployContract(
+    const governance = await viem.deployContract(
       "ZDAO",
       govParams
     );
 
     // Grant proposer and executor role to the gov contract to use proposals
-    await timelock.write.grantRole([
-      await timelock.read.PROPOSER_ROLE(),
-      governance20.address,
+    await timelockController.write.grantRole([
+      await timelockController.read.PROPOSER_ROLE(),
+      governance.address,
     ]);
-    await timelock.write.grantRole([
-      await timelock.read.EXECUTOR_ROLE(),
-      governance20.address,
+    await timelockController.write.grantRole([
+      await timelockController.read.EXECUTOR_ROLE(),
+      governance.address,
     ]);
 
     // Grant minter role to the timelock to let it execute proposal on mint
-    await votingERC20.write.grantRole([
-      await votingERC20.read.MINTER_ROLE(),
-      timelock.address,
+    await votingToken.write.grantRole([
+      await votingToken.read.MINTER_ROLE(),
+      timelockController.address,
     ]);
 
     // Give minter role to admin
-    await votingERC20.write.grantRole([
-      await votingERC20.read.MINTER_ROLE(),
+    await votingToken.write.grantRole([
+      await votingToken.read.MINTER_ROLE(),
       admin.account.address,
     ]);
 
     // Mint tokens to users
-    await votingERC20.write.mint([admin.account.address, initialAdminBalance]);
-    await votingERC20.write.mint([user1.account.address, initialUser1Balance]);
-    await votingERC20.write.mint([user2.account.address, initialUser2Balance]);
+    await votingToken.write.mint([admin.account.address, initialAdminBalance]);
+    await votingToken.write.mint([user1.account.address, initialUser1Balance]);
+    await votingToken.write.mint([user2.account.address, initialUser2Balance]);
 
     // Delegate tokens to themselves for voting power
-    await votingERC20.write.delegate([admin.account.address], { account: admin.account.address });
-    await votingERC20.write.delegate([user1.account.address], { account: user1.account.address });
-    await votingERC20.write.delegate([user2.account.address], { account: user2.account.address });
+    await votingToken.write.delegate([admin.account.address], { account: admin.account.address });
+    await votingToken.write.delegate([user1.account.address], { account: user1.account.address });
+    await votingToken.write.delegate([user2.account.address], { account: user2.account.address });
 
     // fund timelock
-    await votingERC20.write.mint([
-      timelock.address, ethers.parseUnits("100000000"),
+    await votingToken.write.mint([
+      timelockController.address, ethers.parseUnits("100000000"),
     ], {
       account: admin.account.address,
     });
@@ -152,20 +152,20 @@ describe("ZDAO", () => {
     await networkHelpers.mine(2);
 
     return ({
-      votingERC20,
-      timelock,
-      governance20,
+      votingToken,
+      timelockController,
+      governance,
     });
   }
 
   describe("Main features flow test", () => {
     beforeEach(async () => {
       ({ viem, networkHelpers } = await hre.network.connect());
-      ({
-        votingERC20,
-        timelock,
-        governance20,
-      } = await networkHelpers.loadFixture(fixture));
+
+      const { votingToken, timelockController, governance } = await networkHelpers.loadFixture(fixture);
+      votingERC20 = votingToken;
+      timelock = timelockController;
+      governance20 = governance;
     });
 
     it("should have Voting20 deployed with DAO using viem", async () => {
