@@ -59,7 +59,7 @@ contract ZeroTreasuryRegistry is AccessControl {
     // Optional domain ownership oracle to authorize domain owners to record/update
     address public domainOwnershipOracle;
 
-    constructor(address governor, address[] admins) {
+    constructor(address governor, address[] memory admins) {
         if (governor == address(0)) revert ZeroAddress();
         _grantRole(ADMIN_ROLE, governor);
         // Break-glass role for recovery/rotation via DEFAULT_ADMIN_ROLE

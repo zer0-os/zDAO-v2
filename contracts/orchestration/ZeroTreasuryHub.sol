@@ -224,7 +224,7 @@ contract ZeroTreasuryHub {
     function _modifyModuleCatalog(
         bytes32 moduleKey,
         address moduleAddress,
-        bool calldata add
+        bool add
     ) internal {
         if (moduleAddress == address(0)) {
             revert ZeroAddressPassed();
