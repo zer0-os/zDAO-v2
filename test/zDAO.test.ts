@@ -1,13 +1,274 @@
 import hre from "hardhat";
-import { expect } from "chai";
 import { ethers } from "ethers";
-import { DEFAULT_ADMIN_ROLE } from "../src/constants.js";
 import { HardhatViemHelpers } from "@nomicfoundation/hardhat-viem/types";
-import { encodeFunctionData, Hex } from "viem";
+import { encodeFunctionData, Hex, zeroAddress } from "viem";
 import { type Contract, type Wallet } from "./helpers/viem";
 import { NetworkHelpers } from "@nomicfoundation/hardhat-network-helpers/types";
-import { shouldFailWith } from "./helpers/failCheck.js";
+import * as chai from "chai";
+import { expect } from "chai";
+import chaiAsPromised from "chai-as-promised";
+import { DEFAULT_ADMIN_ROLE } from "../src/constants.js";
 
+chai.use(chaiAsPromised);
+
+
+describe("Deploy restrictions", () => {
+  let viem : HardhatViemHelpers;
+  let networkHelpers : NetworkHelpers;
+
+  let admin : Wallet;
+
+  let voting : Contract<"ZeroVotingERC20">;
+  let timelock : Contract<"TimelockController">;
+
+  let voting20Params : [
+    string,
+    string,
+    string,
+    string,
+    Hex
+  ];
+  let timelockParams : [
+    bigint,
+    Array<Hex>,
+    Array<Hex>,
+    Hex
+  ];
+  let govParams : [
+    bigint,
+    string,
+    Hex,
+    Hex,
+    number,
+    number,
+    bigint,
+    bigint,
+    number
+  ];
+
+  beforeEach(async () => {
+    ({ viem, networkHelpers } = await hre.network.connect());
+    [ admin ] = await viem.getWalletClients();
+
+    voting20Params = [
+      "ZeroVotingERC20",
+      "ZV",
+      "ZERO DAO",
+      "1",
+      admin.account.address,
+    ];
+
+    timelockParams = [
+      1n,
+      [],
+      [],
+      admin.account.address,
+    ];
+
+    voting = await viem.deployContract(
+      "ZeroVotingERC20",
+      voting20Params
+    );
+
+    timelock = await viem.deployContract(
+      "TimelockController",
+      timelockParams
+    );
+
+    govParams = [
+      1n,
+      "ZDAO",
+      voting.address,
+      timelock.address,
+      1,
+      10,
+      ethers.parseUnits("10"),
+      10n,
+      5,
+    ];
+
+    // Give minter role to admin
+    await voting.write.grantRole([
+      await voting.read.MINTER_ROLE(),
+      admin.account.address,
+    ]);
+
+    // Mint tokens to users
+    await voting.write.mint([admin.account.address, ethers.parseUnits("10000000000")]);
+
+    // Delegate tokens to themselves for voting power
+    await voting.write.delegate([admin.account.address], { account: admin.account.address });
+  });
+
+  it("Should deploy Voting20 with DAO using viem with right params", async () => {
+    const governance = await viem.deployContract(
+      "ZDAO",
+      govParams
+    );
+
+    expect(voting.address).to.exist;
+    expect(await voting.read.name()).to.equal("ZeroVotingERC20");
+    expect(await voting.read.symbol()).to.equal("ZV");
+
+    expect(timelock).to.exist;
+    expect(await timelock.read.getMinDelay()).to.equal(timelockParams[0]);
+    expect(
+      await timelock.read.hasRole([
+        DEFAULT_ADMIN_ROLE,
+        admin.account.address,
+      ])
+    ).to.equal(true);
+
+    expect(governance).to.exist;
+    expect(await governance.read.name()).to.equal(govParams[1]);
+    expect(
+      (await governance.read.token()).toLowerCase()
+    ).to.equal(
+      govParams[2].toLowerCase()
+    );
+    expect(
+      (await governance.read.timelock()).toLowerCase()
+    ).to.equal(
+      govParams[3].toLowerCase()
+    );
+    expect(
+      await governance.read.votingPeriod()
+    ).to.equal(
+      BigInt(govParams[5])
+    );
+    expect(
+      await governance.read.proposalThreshold()
+    ).to.equal(
+      BigInt(govParams[6])
+    );
+  });
+
+  it("Should have attached correct voting token and timelock", async () => {
+    const governance = await viem.deployContract(
+      "ZDAO",
+      govParams
+    );
+
+    expect(
+      (await governance.read.token()).toLowerCase()
+    ).to.equal(
+      voting.address.toLowerCase()
+    );
+    expect(
+      (await governance.read.timelock()).toLowerCase()
+    ).to.equal(
+      timelock.address.toLowerCase()
+    );
+  });
+
+  it("Should revert when deploying gov without voting token", async () => {
+    await expect(
+      viem.deployContract(
+        "ZDAO",
+        [
+          1n,
+          "ZDAO",
+          zeroAddress, // no voting token
+          "0x0000000000000000000000000000000000000002",
+          1,
+          10,
+          ethers.parseUnits("10"),
+          10n,
+          5,
+        ])
+    ).to.be.rejectedWith("Transaction reverted");
+  });
+
+  it("Should let deploy gov without TimelockController", async () => {
+    await expect(
+      viem.deployContract(
+        "ZDAO",
+        [
+          1n,
+          "ZDAO",
+          voting.address,
+          zeroAddress,
+          1,
+          10,
+          ethers.parseUnits("10"),
+          10n,
+          5,
+        ]
+      )).to.be.fulfilled;
+  });
+
+  it("Should revert when calling gov functions that require TimelockController when none is set", async () => {
+    const governance = await viem.deployContract(
+      "ZDAO",
+      [
+        1n,
+        "ZDAO",
+        voting.address,
+        zeroAddress, // no timelock
+        1,
+        10,
+        ethers.parseUnits("10"),
+        10n,
+        5,
+      ]
+    );
+
+    const proposalDescription = "Mint 1 token to admin";
+    const proposalDescriptionHash = ethers.keccak256(
+      ethers.toUtf8Bytes(proposalDescription)
+    ) as Hex;
+    const calldata = encodeFunctionData({
+      abi: voting.abi,
+      functionName: "mint",
+      args: [admin.account.address, ethers.parseUnits("1")],
+    });
+
+    await governance.write.propose(
+      [
+        [ voting.address ],
+        [ 0n ],
+        [ calldata],
+        proposalDescription,
+      ],
+      {
+        account: admin.account.address,
+      }
+    );
+
+    await networkHelpers.mine(2);
+
+    await governance.write.castVote(
+      [
+        await governance.read.getProposalId(
+          [
+            [ voting.address ],
+            [ 0n ],
+            [ calldata ],
+            proposalDescriptionHash,
+          ]
+        ),
+        1,
+      ],
+      { account: admin.account.address,
+      }
+    );
+
+    await networkHelpers.mine(11);
+
+    await expect(
+      governance.write.queue(
+        [
+          [ voting.address ],
+          [ 0n ],
+          [ calldata ],
+          proposalDescriptionHash,
+        ], {
+          account: admin.account.address,
+        }
+      )
+    ).to.be.rejectedWith("Transaction reverted: function returned an unexpected amount of data");
+  });
+});
 
 describe("ZDAO main features flow test", () => {
   let viem : HardhatViemHelpers;
@@ -158,57 +419,6 @@ describe("ZDAO main features flow test", () => {
       timelock,
       governance20,
     } = await networkHelpers.loadFixture(fixture));
-  });
-
-  it("should have Voting20 deployed with DAO using viem with right params", async () => {
-    expect(votingERC20.address).to.exist;
-    expect(await votingERC20.read.name()).to.equal("ZeroVotingERC20");
-    expect(await votingERC20.read.symbol()).to.equal("ZV");
-
-    expect(timelock).to.exist;
-    expect(await timelock.read.getMinDelay()).to.equal(timelockParams[0]);
-    expect(
-      await timelock.read.hasRole([
-        DEFAULT_ADMIN_ROLE,
-        admin.account.address,
-      ])
-    ).to.equal(true);
-
-    expect(governance20).to.exist;
-    expect(await governance20.read.name()).to.equal(govParams[1]);
-    expect(
-      (await governance20.read.token()).toLowerCase()
-    ).to.equal(
-      govParams[2].toLowerCase()
-    );
-    expect(
-      (await governance20.read.timelock()).toLowerCase()
-    ).to.equal(
-      govParams[3].toLowerCase()
-    );
-    expect(
-      await governance20.read.votingPeriod()
-    ).to.equal(
-      BigInt(govParams[5])
-    );
-    expect(
-      await governance20.read.proposalThreshold()
-    ).to.equal(
-      BigInt(govParams[6])
-    );
-  });
-
-  it("Should have attached correct voting token and timelock", async () => {
-    expect(
-      (await governance20.read.token()).toLowerCase()
-    ).to.equal(
-      votingERC20.address.toLowerCase()
-    );
-    expect(
-      (await governance20.read.timelock()).toLowerCase()
-    ).to.equal(
-      timelock.address.toLowerCase()
-    );
   });
 
   it("Should #updateQuorumNumerator using governon voting process", async () => {
@@ -365,17 +575,16 @@ describe("ZDAO main features flow test", () => {
 
     const proposalDescription = "Mint 1 token to `empty` wallet";
 
-    await shouldFailWith(
-      async () => governance20.write.propose([
+    await expect(
+      governance20.write.propose([
         [ votingERC20.address ],
         [ 0n ],
         [ calldata ],
         proposalDescription,
       ], {
         account: empty.account.address,
-      }),
-      "GovernorInsufficientProposerVotes"
-    );
+      })
+    ).to.be.rejectedWith("GovernorInsufficientProposerVotes");
   });
 
   it("Should have correct proposal state transitions", async () => {
@@ -500,9 +709,5 @@ describe("ZDAO main features flow test", () => {
       await governance20.read.state([proposalId])
     ).to.equal(2); // Canceled
   });
-
-  describe("Timelock restrictions", () => {
-    it(" *** Timelock isn't passed", async () => {});
-    it("Should NOT let #queue proposal if TL hasn't passed", async () => {});
-  });
 });
+
