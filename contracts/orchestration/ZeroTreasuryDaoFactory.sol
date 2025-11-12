@@ -3,7 +3,6 @@ pragma solidity 0.8.30;
 
 import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
 import { Address } from "@openzeppelin/contracts/utils/Address.sol";
-
 import { ZeroTreasuryRegistry } from "./ZeroTreasuryRegistry.sol";
 
 
@@ -33,11 +32,6 @@ contract ZeroTreasuryDaoFactory {
 
     // --- Storage ---
     ZeroTreasuryRegistry public immutable registry;
-
-    /// Optional well-known module IDs for convenience (you can use any numbering in the Registry)
-    /// These are recommendations – you can organize IDs off-chain as you prefer.
-    uint256 public constant MODULE_GOVERNOR = 1;
-    uint256 public constant MODULE_TIMELOCK = 2;
 
     constructor(address registryAddress) {
         if (registryAddress == address(0)) revert ZeroAddress();
@@ -98,40 +92,6 @@ contract ZeroTreasuryDaoFactory {
         clones = new address[](moduleIds.length);
         for (uint256 i = 0; i < moduleIds.length; i++) {
             clones[i] = deployModule(domain, moduleIds[i], initCalldatas[i], instanceIds[i]);
-        }
-    }
-
-    // --- Opinionated convenience wrappers ---
-
-    /// Deploy only a Governor preset
-    function deployGovernor(
-        bytes32 domain,
-        bytes calldata governorInit,
-        uint256 instanceId
-    ) external returns (address governor) {
-        governor = deployModule(domain, MODULE_GOVERNOR, governorInit, instanceId);
-    }
-
-    /// Deploy Governor + Timelock; initialization calldata should encode proper initialize selectors
-    /// for each preset implementation.
-    function deployGovernorWithTimelock(
-        bytes32 domain,
-        bytes calldata governorInit,
-        bytes calldata timelockInit,
-        bytes[] calldata postInitCalls, // optional additional wiring calls targeting deployed contracts
-        address[] calldata postInitTargets, // must line up with postInitCalls
-        uint256 instanceId
-    ) external returns (address governor, address timelock) {
-        if (postInitCalls.length != postInitTargets.length) revert LengthMismatch();
-        // Use the same instanceId for both modules; salts differ via moduleId so no collision
-        governor = deployModule(domain, MODULE_GOVERNOR, governorInit, instanceId);
-        timelock = deployModule(domain, MODULE_TIMELOCK, timelockInit, instanceId);
-
-        // Optional post-init wiring (e.g., set timelock as executor, grant roles, set proposer)
-        for (uint256 i = 0; i < postInitTargets.length; i++) {
-            address target = postInitTargets[i];
-            bytes memory data = postInitCalls[i];
-            Address.functionCall(target, data);
         }
     }
 }
