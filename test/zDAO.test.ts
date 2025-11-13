@@ -317,7 +317,6 @@ describe("ZDAO main features flow test", () => {
   const initialUser2Balance = ethers.parseUnits("200");
 
   let votingERC20 : Contract<"ZeroVotingERC20">;
-  let timelock : Contract<"TimelockController">;
   let governance20 : Contract<"ZDAO">;
 
   // eslint-disable-next-line prefer-arrow/prefer-arrow-functions
